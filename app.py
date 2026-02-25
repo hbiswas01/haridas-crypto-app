@@ -3,31 +3,50 @@ import streamlit.components.v1 as components
 import ccxt
 import pandas as pd
 
-# পেজ সেটআপ
-st.set_page_config(page_title="Haridas Pro Terminal", layout="wide", initial_sidebar_state="expanded")
+# পেজ সেটআপ (Wide layout)
+st.set_page_config(page_title="Haridas Pro Terminal", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
 
-# এক্সচেঞ্জ ইনিশিয়ালাইজ করা (Kraken ব্যবহার করা হয়েছে সার্ভার ব্লক এড়াতে)
+# Custom CSS দিয়ে প্রো-লুক তৈরি করা
+st.markdown("""
+<style>
+    /* Streamlit-এর ডিফল্ট মেনু এবং ফুটার লুকানো */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
+    /* ওপরের ফাঁকা জায়গা কমানো */
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 0rem;
+    }
+    
+    /* সাইডবার একটু ডার্ক ও প্রফেশনাল করা */
+    [data-testid="stSidebar"] {
+        background-color: #0E1117;
+        border-right: 1px solid #1f293d;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 @st.cache_resource
 def get_exchange():
     return ccxt.kraken()
 
 exchange = get_exchange()
 
-# কোন কোন কয়েন আমরা লিস্টে দেখাবো তার ম্যাপ (CCXT সিম্বল থেকে TradingView সিম্বল)
 coins_map = {
     "BTC/USDT": "BINANCE:BTCUSDT",
     "ETH/USDT": "BINANCE:ETHUSDT",
     "SOL/USDT": "BINANCE:SOLUSDT",
+    "BNB/USDT": "BINANCE:BNBUSDT",
     "XRP/USDT": "BINANCE:XRPUSDT",
     "DOGE/USDT": "BINANCE:DOGEUSDT",
     "ADA/USDT": "BINANCE:ADAUSDT",
-    "DOT/USDT": "BINANCE:DOTUSDT",
-    "LTC/USDT": "BINANCE:LTCUSDT",
-    "BCH/USDT": "BINANCE:BCHUSDT",
+    "SHIB/USDT": "BINANCE:SHIBUSDT",
+    "PEPE/USDT": "BINANCE:PEPEUSDT",
     "LINK/USDT": "BINANCE:LINKUSDT"
 }
 
-# ডেটা আনার ফাংশন (প্রতিবার ক্লিক করলে যেন অ্যাপ স্লো না হয়, তাই ৬০ সেকেন্ড ডেটা সেভ থাকবে)
 @st.cache_data(ttl=60)
 def fetch_market_data():
     symbols = list(coins_map.keys())
@@ -41,11 +60,10 @@ def fetch_market_data():
                 change_pct = t.get('percentage', 0.0)
                 change_amt = t.get('change', 0.0)
 
-                # যদি কোনো ডেটা মিসিং থাকে, তবে ক্যালকুলেট করে নেওয়া
                 if change_pct is None and last and t.get('open'):
-                    change_pct = ((last - t['open']) / t['open']) * 100
+                    change_pct = ((last - t.get('open', last)) / t.get('open', last)) * 100
                 if change_amt is None and last and t.get('open'):
-                    change_amt = last - t['open']
+                    change_amt = last - t.get('open', last)
 
                 data.append({
                     'Symbol': sym,
@@ -60,59 +78,72 @@ def fetch_market_data():
 
 df = fetch_market_data()
 
-# সাইডবার এবং ফিল্টার তৈরি
-st.sidebar.title("🪙 Market Watch")
+# ================= সাইডবার =================
+st.sidebar.markdown("### ⚡ **Haridas Terminal**")
+st.sidebar.markdown("---")
 
-if st.sidebar.button("🔄 Refresh Market Data"):
-    fetch_market_data.clear() # ক্যাশ ক্লিয়ার করে নতুন ডেটা আনবে
+if st.sidebar.button("🔄 Refresh Data", use_container_width=True):
+    fetch_market_data.clear()
     st.rerun()
 
 if not df.empty:
-    # Top Gainer ও Top Loser ফিল্টার
-    filter_option = st.sidebar.selectbox("🎯 Filter By:", ["All Coins", "Top Gainers 🚀", "Top Losers 🔻"])
+    filter_option = st.sidebar.selectbox("🎯 Filter Market:", ["All Coins", "Top Gainers 🚀", "Top Losers 🔻"])
 
     if filter_option == "Top Gainers 🚀":
         df = df.sort_values(by="Change_Pct", ascending=False)
     elif filter_option == "Top Losers 🔻":
         df = df.sort_values(by="Change_Pct", ascending=True)
 
-    # লিস্ট তৈরি করা (দাম এবং P&L সহ)
     display_options = []
     option_to_tv_map = {}
 
-    st.sidebar.write("---")
+    st.sidebar.markdown("<br>", unsafe_allow_html=True) # একটু স্পেস
     
     for _, row in df.iterrows():
         sym = row['Symbol']
         price = row['Price']
         pct = row['Change_Pct']
-        amt = row['Change_Amt']
-
-        # লাভ হলে +, লস হলে - চিহ্ন
-        sign_pct = "+" if pct > 0 else ""
-        sign_amt = "+" if amt > 0 else ""
-
-        # স্টাইলিশ টেক্সট তৈরি
-        display_text = f"{sym} | ${price:,.2f} | {sign_pct}{pct:.2f}% ({sign_amt}${amt:,.2f})"
+        
+        # পজিটিভ/নেগেটিভ অনুযায়ী ইমোজি
+        status_icon = "🟢" if pct > 0 else "🔴"
+        
+        # সাইডবারের জন্য ক্লিন টেক্সট
+        display_text = f"{status_icon} {sym} | {pct:.2f}%"
         display_options.append(display_text)
         option_to_tv_map[display_text] = row['TV_Symbol']
 
-    # রেডিও বাটন যেখানে কয়েন সিলেক্ট করা যাবে
-    selected_display = st.sidebar.radio("Select a Coin:", display_options)
+    selected_display = st.sidebar.radio("Watchlist:", display_options)
     
-    # সিলেক্ট করা কয়েনের আসল নাম এবং TradingView সিম্বল আলাদা করা
     tv_symbol = option_to_tv_map[selected_display]
-    coin_name = selected_display.split(" | ")[0]
+    coin_name = selected_display.split(" ")[1] # শুধু নামটুকু নেওয়া
 else:
     tv_symbol = "BINANCE:BTCUSDT"
     coin_name = "BTC/USDT"
     st.sidebar.error("ডেটা লোড হতে সমস্যা হচ্ছে!")
 
-# মেইন স্ক্রিন (ডানদিকের লাইভ চার্ট)
-st.title("⚡ Haridas Pro Crypto Terminal")
-st.subheader(f"Live 1-Min Chart: {coin_name}")
+# ================= মেইন ড্যাশবোর্ড =================
 
-# TradingView-এর ডাইনামিক উইজেট
+# টপ কুইক মার্কেট কার্ডস
+if not df.empty:
+    top_cols = st.columns(3)
+    
+    # BTC, ETH, SOL এর কুইক কার্ড
+    quick_coins = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+    
+    for i, col in enumerate(top_cols):
+        if i < len(quick_coins):
+            coin_data = df[df['Symbol'] == quick_coins[i]]
+            if not coin_data.empty:
+                c_price = coin_data.iloc[0]['Price']
+                c_pct = coin_data.iloc[0]['Change_Pct']
+                with col:
+                    st.metric(label=quick_coins[i], value=f"${c_price:,.4f}", delta=f"{c_pct:.2f}%")
+
+st.markdown("---")
+
+# মেইন চার্ট এরিয়া
+st.markdown(f"#### 📈 Live Order Flow: **{coin_name}**")
+
 tv_widget = f"""
 <div class="tradingview-widget-container" style="height:650px;width:100%">
   <div id="tradingview_dynamic" style="height:100%;width:100%"></div>
