@@ -1,39 +1,37 @@
 import streamlit as st
-import ccxt
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Haridas Crypto Setup", layout="wide")
-st.title("🚀 Haridas Crypto Setup App")
+st.title("⚡ Haridas Ultra-Fast Crypto Terminal")
+st.write("Live LTP & Real-Time Chart (Zero Delay)")
 
-exchange = ccxt.kraken()
+# TradingView-এর লাইভ চার্ট এবং LTP উইজেট (WebSocket)
+tv_widget = """
+<div class="tradingview-widget-container" style="height:100%;width:100%">
+  <div id="tradingview_fast" style="height:600px;width:100%"></div>
+  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+  <script type="text/javascript">
+  new TradingView.widget(
+  {
+  "autosize": true,
+  "symbol": "BINANCE:BTCUSDT",
+  "interval": "1",
+  "timezone": "Asia/Kolkata",
+  "theme": "dark",
+  "style": "1",
+  "locale": "en",
+  "enable_publishing": false,
+  "backgroundColor": "#0E1117",
+  "gridColor": "#1f293d",
+  "hide_top_toolbar": false,
+  "hide_legend": false,
+  "save_image": false,
+  "container_id": "tradingview_fast"
+}
+  );
+  </script>
+</div>
+"""
 
-def get_price(symbol):
-    try:
-        ticker = exchange.fetch_ticker(symbol)
-        return ticker['last']
-    except Exception as e:
-        return None
-
-# রিফ্রেশ বাটন তৈরি
-st.write("---")
-if st.button("🔄 Refresh Prices"):
-    st.rerun()
-st.write("---")
-
-col1, col2 = st.columns(2)
-
-btc_price = get_price('BTC/USDT')
-sol_price = get_price('SOL/USDT')
-
-with col1:
-    st.subheader("Bitcoin (BTC/USDT)")
-    if btc_price:
-        st.metric(label="Live Price", value=f"${btc_price}")
-    else:
-        st.error("ডেটা লোড হতে সমস্যা হচ্ছে!")
-
-with col2:
-    st.subheader("Solana (SOL/USDT)")
-    if sol_price:
-        st.metric(label="Live Price", value=f"${sol_price}")
-    else:
-        st.error("ডেটা লোড হতে সমস্যা হচ্ছে!")
+# Streamlit-এ HTML উইজেট রেন্ডার করা
+components.html(tv_widget, height=600)
