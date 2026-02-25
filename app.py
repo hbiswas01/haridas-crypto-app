@@ -16,10 +16,39 @@ st.markdown("""
         padding-top: 1rem;
         padding-bottom: 0rem;
     }
+    
+    /* Momentum Dashboard Custom CSS */
+    .mdf-table {
+        background-color: rgba(12, 14, 28, 0.95);
+        border: 2px solid rgb(30, 80, 140);
+        color: white;
+        font-family: monospace;
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        margin-top: 10px;
+    }
+    .mdf-table th, .mdf-table td {
+        border: 1px solid rgb(25, 65, 120);
+        padding: 6px 8px;
+        text-align: center;
+    }
+    .mdf-header {
+        background-color: rgba(8, 10, 22, 0.9);
+        color: rgb(65, 195, 115);
+        font-weight: bold;
+        font-size: 14px;
+    }
+    .mdf-label { color: rgb(120, 122, 142); text-align: left !important; font-size: 11px;}
+    .mdf-value { color: rgb(65, 195, 115); }
+    .mdf-right { text-align: right !important; }
+    .mdf-white { color: rgb(222, 224, 238); }
+    .mdf-cyan { color: rgb(60, 200, 255); }
+    .mdf-orange { color: rgb(255, 130, 40); }
 </style>
 """, unsafe_allow_html=True)
 
-# এক্সচেঞ্জ সেটআপ (KuCoin ব্যবহার করা হলো কারণ এতে সব কয়েন থাকে এবং সার্ভার ব্লক করে না)
+# এক্সচেঞ্জ সেটআপ (KuCoin)
 exchange = ccxt.kucoin()
 
 coins_map = {
@@ -35,7 +64,6 @@ coins_map = {
     "LINK/USDT": "BINANCE:LINKUSDT"
 }
 
-# সেফ ডেটা ফেচিং (কোনো এরর আসলে স্কিপ করবে, অ্যাপ ক্র্যাশ করবে না)
 @st.cache_data(ttl=60)
 def fetch_market_data():
     data = []
@@ -49,7 +77,6 @@ def fetch_market_data():
             change_pct = t.get('percentage', 0.0)
             change_amt = t.get('change', 0.0)
 
-            # যদি API পার্সেন্টেজ না দেয়, তবে নিজে ক্যালকুলেট করা
             if change_pct is None and t.get('open'):
                 change_pct = ((last - t.get('open')) / t.get('open')) * 100
             if change_amt is None and t.get('open'):
@@ -63,8 +90,7 @@ def fetch_market_data():
                 'Change_Pct': float(change_pct) if change_pct else 0.0
             })
         except Exception:
-            pass # এরর হলে কয়েনটি স্কিপ করবে
-            
+            pass
     return pd.DataFrame(data)
 
 df = fetch_market_data()
@@ -108,48 +134,58 @@ if not df.empty:
 else:
     tv_symbol = "BINANCE:BTCUSDT"
     coin_name = "BTC/USDT"
-    st.sidebar.error("ডেটা লোড হতে সমস্যা হচ্ছে! ইন্টারনেট বা এক্সচেঞ্জ এপিআই চেক করুন।")
+    st.sidebar.error("ডেটা লোড হতে সমস্যা হচ্ছে!")
 
 # ================= মেইন ড্যাশবোর্ড =================
-if not df.empty:
-    top_cols = st.columns(3)
-    quick_coins = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+
+# স্ক্রিনটিকে দুটি কলামে ভাগ করা হলো (বড় অংশে চার্ট, ছোট অংশে টেবিল)
+col_chart, col_dash = st.columns([3, 1])
+
+with col_chart:
+    st.markdown(f"#### 📈 Live Fast Chart: **{coin_name}**")
+    tv_widget = f"""
+    <div class="tradingview-widget-container" style="height:600px;width:100%">
+      <div id="tradingview_dynamic" style="height:100%;width:100%"></div>
+      <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+      <script type="text/javascript">
+      new TradingView.widget({{
+        "autosize": true,
+        "symbol": "{tv_symbol}",
+        "interval": "1",
+        "timezone": "Asia/Kolkata",
+        "theme": "dark",
+        "style": "1",
+        "locale": "en",
+        "enable_publishing": false,
+        "backgroundColor": "#0E1117",
+        "gridColor": "#1f293d",
+        "hide_top_toolbar": false,
+        "hide_legend": false,
+        "save_image": false,
+        "container_id": "tradingview_dynamic"
+      }});
+      </script>
+    </div>
+    """
+    components.html(tv_widget, height=600)
+
+with col_dash:
+    st.markdown("#### ⚙️ Momentum Status")
     
-    for i, col in enumerate(top_cols):
-        if i < len(quick_coins):
-            coin_data = df[df['Symbol'] == quick_coins[i]]
-            if not coin_data.empty:
-                c_price = coin_data.iloc[0]['Price']
-                c_pct = coin_data.iloc[0]['Change_Pct']
-                with col:
-                    st.metric(label=quick_coins[i], value=f"${c_price:,.4f}", delta=f"{c_pct:.2f}%")
-
-st.markdown("---")
-st.markdown(f"#### 📈 Live Chart: **{coin_name}**")
-
-tv_widget = f"""
-<div class="tradingview-widget-container" style="height:650px;width:100%">
-  <div id="tradingview_dynamic" style="height:100%;width:100%"></div>
-  <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-  <script type="text/javascript">
-  new TradingView.widget({{
-    "autosize": true,
-    "symbol": "{tv_symbol}",
-    "interval": "1",
-    "timezone": "Asia/Kolkata",
-    "theme": "dark",
-    "style": "1",
-    "locale": "en",
-    "enable_publishing": false,
-    "backgroundColor": "#0E1117",
-    "gridColor": "#1f293d",
-    "hide_top_toolbar": false,
-    "hide_legend": false,
-    "save_image": false,
-    "container_id": "tradingview_dynamic"
-  }});
-  </script>
-</div>
-"""
-
-components.html(tv_widget, height=650)
+    # Custom HTML Table for Momentum Dashboard (UI Replica)
+    mdf_dashboard = """
+    <table class="mdf-table">
+        <tr><td colspan="3" class="mdf-header">MOMENTUM DECAY FIELD[BullByte]</td></tr>
+        <tr><td class="mdf-label">ENERGY</td><td class="mdf-value">██████████████░░</td><td class="mdf-right mdf-value">98%</td></tr>
+        <tr><td class="mdf-label">PHASE</td><td class="mdf-value">CHARGED</td><td class="mdf-right mdf-value">BULL</td></tr>
+        <tr><td class="mdf-label">E0 INITIAL</td><td class="mdf-white">2.93</td><td class="mdf-right mdf-cyan">Strong</td></tr>
+        <tr><td class="mdf-label">HALF-LIFE</td><td class="mdf-white">9.1 bars</td><td class="mdf-right mdf-label">ELP 0</td></tr>
+        <tr><td class="mdf-label">ETA TO EXH</td><td class="mdf-orange">33 bars</td><td class="mdf-right mdf-orange">▮▮▮▮▮▮▮▯</td></tr>
+        <tr><td class="mdf-label">DECAY CURVE</td><td class="mdf-value" style="font-size:10px;">▇▆▅▄▃▂▁·····</td><td class="mdf-right mdf-label">NOW >></td></tr>
+        <tr><td class="mdf-label" style="text-align:center !important;">IMPULSES</td><td class="mdf-label" style="text-align:center !important;">EXHAUSTIONS</td><td class="mdf-label" style="text-align:center !important;">DIVERGENCES</td></tr>
+        <tr><td class="mdf-white">591</td><td style="color:rgb(255, 195, 0);">35</td><td style="color:rgb(255, 120, 0);">119</td></tr>
+    </table>
+    """
+    st.markdown(mdf_dashboard, unsafe_allow_html=True)
+    
+    st.info("💡 নোট: এটি একটি UI ডিজাইন। এর পেছনের লাইভ ম্যাথ ক্যালকুলেশনের জন্য Python লজিক অ্যাড করতে হবে।")
