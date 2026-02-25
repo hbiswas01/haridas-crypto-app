@@ -3,17 +3,52 @@ import streamlit.components.v1 as components
 import ccxt
 import pandas as pd
 
-# পেজ সেটআপ
+# পেজ সেটআপ (এখানে initial_sidebar_state="collapsed" দেওয়া যায় যদি শুরুতে সাইডবার হাইড রাখতে চাও)
 st.set_page_config(page_title="Haridas Pro Terminal", page_icon="⚡", layout="wide", initial_sidebar_state="expanded")
 
-# Custom CSS
+# Custom CSS - সুন্দর গ্লোয়িং বাটন অ্যাড করা হলো
 st.markdown("""
 <style>
+    /* Streamlit-এর রাইট সাইড মেনু এবং ফুটার হাইড করা */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;}
+    
+    /* হেডার পুরোপুরি হাইড না করে ট্রান্সপারেন্ট করা, যাতে বাটন কাজ করে */
+    header {background-color: transparent !important;}
+    
+    /* ডানদিকের ডিফল্ট টুলস হাইড করা */
+    .stApp > header > div:not(:first-child) {display: none;}
+    
+    /* 🎯 সাইডবার খোলার সুন্দর গ্লোয়িং ফ্লোটিং বাটন (Open Button) */
+    [data-testid="collapsedControl"] {
+        background-color: #0E1117 !important;
+        border: 2px solid #00ff88 !important;
+        border-radius: 50% !important;
+        color: #00ff88 !important;
+        box-shadow: 0 0 10px rgba(0, 255, 136, 0.4);
+        top: 15px !important;
+        left: 15px !important;
+        transition: 0.3s ease-in-out;
+        z-index: 99999;
+    }
+    [data-testid="collapsedControl"]:hover {
+        box-shadow: 0 0 20px rgba(0, 255, 136, 0.8);
+        transform: scale(1.1);
+    }
+
+    /* সাইডবার বন্ধ করার ভেতরের বাটন (Close Button) */
+    [data-testid="stSidebarCollapseButton"] {
+        color: #ff4b4b !important;
+        transition: 0.3s;
+    }
+    [data-testid="stSidebarCollapseButton"]:hover {
+        transform: scale(1.1);
+        color: #ff0000 !important;
+    }
+
+    /* ওপরের স্পেস কমানো */
     .block-container {
-        padding-top: 1rem;
+        padding-top: 3rem;
         padding-bottom: 0rem;
     }
     
@@ -138,7 +173,6 @@ else:
 
 # ================= মেইন ড্যাশবোর্ড =================
 
-# স্ক্রিনটিকে দুটি কলামে ভাগ করা হলো (বড় অংশে চার্ট, ছোট অংশে টেবিল)
 col_chart, col_dash = st.columns([3, 1])
 
 with col_chart:
@@ -172,7 +206,7 @@ with col_chart:
 with col_dash:
     st.markdown("#### ⚙️ Momentum Status")
     
-    # Custom HTML Table for Momentum Dashboard (UI Replica)
+    # Custom HTML Table for Momentum Dashboard
     mdf_dashboard = """
     <table class="mdf-table">
         <tr><td colspan="3" class="mdf-header">MOMENTUM DECAY FIELD[BullByte]</td></tr>
@@ -187,5 +221,4 @@ with col_dash:
     </table>
     """
     st.markdown(mdf_dashboard, unsafe_allow_html=True)
-    
-    st.info("💡 নোট: এটি একটি UI ডিজাইন। এর পেছনের লাইভ ম্যাথ ক্যালকুলেশনের জন্য Python লজিক অ্যাড করতে হবে।")
+    st.info("💡 নোট: এটি একটি UI ডিজাইন।")
