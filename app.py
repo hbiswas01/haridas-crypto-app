@@ -90,7 +90,7 @@ css_string = (
 )
 st.markdown(css_string, unsafe_allow_html=True)
 
-# --- 3. HELPER FUNCTIONS ---
+# --- 3. HELPER FUNCTIONS & MATH ---
 @st.cache_data(ttl=15, show_spinner=False)
 def fetch_coindcx_api():
     try:
@@ -148,32 +148,25 @@ def fetch_live_data(ticker_symbol):
             return (0.0, 0.0, 0.0) 
     except: return (0.0, 0.0, 0.0)
 
-
-# 🚨 PYTHON TRANSLATION OF MDF PINE SCRIPT 🚨
 def calculate_mdf_physics(df):
-    if df.empty or len(df) < 20:
-        return 0, "NEUTRAL", 0.0, 0, 0, 0, 0, 0
-
+    if df.empty or len(df) < 20: return 0, "NEUTRAL", 0.0, 0, 0, 0, 0, 0, 0
     closes = df['Close'].values
     opens = df['Open'].values
     highs = df['High'].values
     lows = df['Low'].values
     volumes = df['Volume'].values
 
-    # Calculate ATR (14)
     high_low = highs - lows
     high_close_prev = np.abs(highs[1:] - closes[:-1])
     low_close_prev = np.abs(lows[1:] - closes[:-1])
     tr = np.maximum(high_low[1:], np.maximum(high_close_prev, low_close_prev))
     atr = np.mean(tr[-14:]) if len(tr) >= 14 else np.mean(tr)
 
-    # Momentum Physics
     current_close = closes[-1]
     current_open = opens[-1]
     body_size = abs(current_close - current_open)
     
-    # Velocity & Volume Boost
-    velocity = abs(closes[-1] - closes[-4]) / 3
+    velocity = abs(closes[-1] - closes[-4]) / 3 if len(closes) > 4 else 0
     avg_vel = np.mean(np.abs(np.diff(closes[-15:]))) if len(closes) > 15 else velocity
     vel_boost = min(velocity / avg_vel, 3.0) if avg_vel > 0 else 1.0
     
@@ -181,19 +174,15 @@ def calculate_mdf_physics(df):
     rel_vol = volumes[-1] / vol_avg if vol_avg > 0 else 1.0
     vol_boost = min(max(rel_vol, 0.5), 3.0)
 
-    # Initial Energy (E0)
     raw_e0 = (body_size / max(atr, 1e-10)) * vel_boost * vol_boost
     e0 = min(raw_e0, 5.0)
 
-    # Impulse Direction
     is_bull = current_close > current_open
     phase = "BULL" if is_bull else "BEAR"
 
-    # Decay Calculation (Half-life = 8 bars)
     half_life = 8.0 * max(0.6, min(e0 / 2.0, 2.2))
     lam = np.log(2) / max(half_life, 1)
     
-    # Let's assume this impulse happened 'bars_since' ago based on trend
     bars_since = 0
     for i in range(1, 10):
         if (is_bull and closes[-1-i] < opens[-1-i]) or (not is_bull and closes[-1-i] > opens[-1-i]):
@@ -204,108 +193,86 @@ def calculate_mdf_physics(df):
     energy_norm = max(0.0, min(1.0, cur_energy / 3.0))
     energy_pct = int(energy_norm * 100)
 
-    # ETA to Exhaustion (Threshold = 0.08)
     exh_thr = 0.08
     energy_ratio = cur_energy / e0 if e0 > 0 else 0
     decay_eta = (np.log(energy_ratio) - np.log(exh_thr)) / lam if lam > 0 and energy_ratio > exh_thr else 0
 
-    # Mocking Impulses/Exhaustions/Divergences based on last 50 bars volatility
     impulses = int(np.sum(volumes[-5:]) / 1000) if vol_avg > 0 else np.random.randint(100, 800)
     exhaustions = int(np.std(closes[-10:]) * 5)
     divergences = int(abs(closes[-1] - closes[-10]) / closes[-10] * 5000)
 
     return energy_pct, phase, e0, round(half_life, 1), bars_since, round(decay_eta, 1), impulses, exhaustions, divergences
 
-
 @st.cache_data(ttl=30, show_spinner=False)
 def get_dynamic_momentum(ticker, interval_binance):
     try:
         symbol = ticker.replace('-USD', 'USDT')
-        url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval_binance}&limit=50"
+        url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval={interval_binance}&limit=60"
         res = requests.get(url, timeout=3).json()
         if len(res) >= 20:
             df = pd.DataFrame(res, columns=['Open time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close time', 'Quote asset volume', 'Number of trades', 'Taker buy base asset volume', 'Taker buy quote asset volume', 'Ignore'])
-            df['Open'] = df['Open'].astype(float)
-            df['High'] = df['High'].astype(float)
-            df['Low'] = df['Low'].astype(float)
-            df['Close'] = df['Close'].astype(float)
-            df['Volume'] = df['Volume'].astype(float)
-            
+            df[['Open', 'High', 'Low', 'Close', 'Volume']] = df[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
             return calculate_mdf_physics(df)
     except: pass
     return 0, "NEUTRAL", 0.0, 0, 0, 0, 0, 0, 0
 
-
-@st.cache_data(ttl=120, show_spinner=False)
-def get_crypto_trends(item_list):
-    def fetch_trend(ticker):
-        try:
-            df = yf.Ticker(ticker).history(period="5d", interval="1d")
-            if len(df) >= 3:
-                c1, o1 = float(df['Close'].iloc[-1]), float(df['Open'].iloc[-1])
-                c2, o2 = float(df['Close'].iloc[-2]), float(df['Open'].iloc[-2])
-                c3, o3 = float(df['Close'].iloc[-3]), float(df['Open'].iloc[-3])
-                if c1 > o1 and c2 > o2 and c3 > o3: return {"Stock": ticker, "Status": "৩ দিন উত্থান", "Color": "green"}
-                elif c1 < o1 and c2 < o2 and c3 < o3: return {"Stock": ticker, "Status": "৩ দিন পতন", "Color": "red"}
-                return None
-        except: pass
-        try:
-            symbol = ticker.replace('-USD', 'USDT')
-            url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1d&limit=3"
-            res = requests.get(url, timeout=2).json()
-            if len(res) >= 3:
-                o3, c3 = float(res[0][1]), float(res[0][4])
-                o2, c2 = float(res[1][1]), float(res[1][4])
-                o1, c1 = float(res[2][1]), float(res[2][4])
-                if c1 > o1 and c2 > o2 and c3 > o3: return {"Stock": ticker, "Status": "৩ দিন উত্থান", "Color": "green"}
-                elif c1 < o1 and c2 < o2 and c3 < o3: return {"Stock": ticker, "Status": "৩ দিন পতন", "Color": "red"}
-        except: pass
-        return None
-    with ThreadPoolExecutor(max_workers=30) as executor: results = list(executor.map(fetch_trend, item_list))
-    return [r for r in results if r]
-
+# 🚨 THE NEW ADVANCED STRATEGY ENGINE (MDF + DONCHIAN + BB) 🚨
 @st.cache_data(ttl=60, show_spinner=False)
-def run_crypto_strategy(crypto_list, sentiment="BOTH"):
+def run_crypto_advanced_strategy(crypto_list, sentiment="BOTH"):
     signals = []
     def scan_coin(coin):
         try:
-            df = yf.Ticker(coin).history(period="15d", interval="1h") 
-            if df.empty or len(df) < 25: return None
-            df['SMA_20'] = df['Close'].rolling(window=20).mean()
-            df['STD_20'] = df['Close'].rolling(window=20).std()
-            df['Upper_BB'] = df['SMA_20'] + (2 * df['STD_20'])
-            df['Lower_BB'] = df['SMA_20'] - (2 * df['STD_20'])
-            df['HA_Close'] = (df['Open'] + df['High'] + df['Low'] + df['Close']) / 4
-            ha_open = [df['Open'].iloc[0]]
-            for i in range(1, len(df)): ha_open.append((ha_open[i-1] + df['HA_Close'].iloc[i-1]) / 2)
-            df['HA_Open'] = ha_open
-            df['HA_High'] = df[['High', 'HA_Open', 'HA_Close']].max(axis=1)
-            df['HA_Low'] = df[['Low', 'HA_Open', 'HA_Close']].min(axis=1)
-            df = df.dropna()
-            if len(df) < 3: return None
+            symbol = coin.replace('-USD', 'USDT')
+            url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1h&limit=60"
+            res = requests.get(url, timeout=3).json()
+            if len(res) < 56: return None
             
-            completed_idx = len(df) - 2
-            alert_candle, prev_candle, current_ltp = df.iloc[completed_idx], df.iloc[completed_idx - 1], df['Close'].iloc[-1]
+            df = pd.DataFrame(res, columns=['Open time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close time', 'Quote asset volume', 'Number of trades', 'Taker buy base asset volume', 'Taker buy quote asset volume', 'Ignore'])
+            df[['Open', 'High', 'Low', 'Close', 'Volume']] = df[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
+            
+            # Pine Script Logic: Donchian Channels
+            df['Upper_20'] = df['High'].rolling(20).max().shift(1)
+            df['Lower_20'] = df['Low'].rolling(20).min().shift(1)
+            df['SL_Long'] = df['Low'].rolling(10).min().shift(1)
+            df['SL_Short'] = df['High'].rolling(10).max().shift(1)
+            
+            # Pine Script Logic: MDF Momentum Phase
+            energy_pct, phase, _, _, _, _, _, _, _ = calculate_mdf_physics(df)
+            
+            current_close = df['Close'].iloc[-1]
+            current_high = df['High'].iloc[-1]
+            current_low = df['Low'].iloc[-1]
+            
+            upper_20 = df['Upper_20'].iloc[-1]
+            lower_20 = df['Lower_20'].iloc[-1]
+            
             signal = None
-            entry = sl = target_bb = 0.0
-            buffer = alert_candle['Close'] * 0.001 
+            entry = current_close
+            sl = 0.0
             
-            if (prev_candle['HA_High'] >= prev_candle['Upper_BB']) and (alert_candle['HA_High'] < alert_candle['Upper_BB']):
-                signal, entry, sl, target_bb = "SHORT", alert_candle['Low'] - buffer, alert_candle['High'] + buffer, alert_candle['Lower_BB']
-            elif (prev_candle['HA_Low'] <= prev_candle['Lower_BB']) and (alert_candle['HA_Low'] > alert_candle['Lower_BB']):
-                signal, entry, sl, target_bb = "BUY", alert_candle['High'] + buffer, alert_candle['Low'] - buffer, alert_candle['Upper_BB']
+            # 🟢 BUY LOGIC: Breakout of 20-High + MDF is Bullish + Good Energy
+            if current_high >= upper_20 and phase == "BULL" and energy_pct > 30:
+                signal = "BUY"
+                sl = df['SL_Long'].iloc[-1]
+                
+            # 🔴 SHORT LOGIC: Breakout of 20-Low + MDF is Bearish + Good Energy
+            elif current_low <= lower_20 and phase == "BEAR" and energy_pct > 30:
+                signal = "SHORT"
+                sl = df['SL_Short'].iloc[-1]
                 
             if sentiment == "BULLISH" and signal == "SHORT": return None
             if sentiment == "BEARISH" and signal == "BUY": return None
 
-            if signal:
+            if signal and sl > 0:
                 risk = abs(entry - sl)
+                target = entry + (risk * 3) if signal == "BUY" else entry - (risk * 3)
                 if risk > 0:
-                    return {"Stock": coin, "Signal": signal, "Entry": float(entry), "LTP": float(current_ltp), "SL": float(sl), "Target(BB)": float(target_bb), "T2(1:3)": float(entry - (risk*3) if signal=="SHORT" else entry + (risk*3)), "Time": alert_candle.name.strftime('%d %b, %H:%M')}
+                    return {"Stock": coin, "Signal": signal, "Entry": float(entry), "LTP": float(current_close), "SL": float(sl), "Target": float(target), "Time": datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%H:%M')}
         except: return None
         return None
 
-    with ThreadPoolExecutor(max_workers=30) as executor: results = list(executor.map(scan_coin, crypto_list))
+    with ThreadPoolExecutor(max_workers=30) as executor:
+        results = list(executor.map(scan_coin, crypto_list))
     for res in results:
         if res is not None: signals.append(res)
     return signals
@@ -322,7 +289,7 @@ def process_auto_trades(live_signals):
             elif sig['Signal'] == 'SHORT' and sig['LTP'] <= sig['Entry']: is_triggered = True
             
             if is_triggered:
-                new_trade = {"Date": current_time_str, "Stock": sig['Stock'], "Signal": sig['Signal'], "Entry": float(sig['Entry']), "SL": float(sig['SL']), "Target": float(sig['T2(1:3)']), "Status": "RUNNING"}
+                new_trade = {"Date": current_time_str, "Stock": sig['Stock'], "Signal": sig['Signal'], "Entry": float(sig['Entry']), "SL": float(sig['SL']), "Target": float(sig['Target']), "Status": "RUNNING"}
                 st.session_state.active_trades.append(new_trade)
                 save_data(st.session_state.active_trades, ACTIVE_TRADES_FILE)
 
@@ -371,7 +338,7 @@ def place_coindcx_order(market, side, order_type, price, quantity):
 # --- Sidebar ---
 with st.sidebar:
     st.markdown("### ₿ CRYPTO DASHBOARD")
-    menu_options = ["📈 MAIN TERMINAL", "📊 LIVE CHART & MOMENTUM", "⚡ REAL TRADE (CoinDCX)", "🧮 Futures Risk Calculator", "📊 Backtest Engine", "⚙️ Scanner Settings"]
+    menu_options = ["📈 MAIN TERMINAL", "⚡ REAL TRADE (CoinDCX)", "🧮 Futures Risk Calculator", "📊 Backtest Engine", "⚙️ Scanner Settings"]
     page_selection = st.radio("Select Menu:", menu_options)
     st.divider()
     
@@ -432,145 +399,26 @@ with col_ref2:
         st.cache_data.clear()
         st.rerun()
 
-# ==================== MENU 1: MAIN TERMINAL ====================
+# ==================== MENU 1: MAIN TERMINAL (INTEGRATED) ====================
 if page_selection == "📈 MAIN TERMINAL":
-    with st.spinner(f"Scanning 1H HA Charts (Sentiment: {user_sentiment})..."): 
-        live_signals = run_crypto_strategy(current_watchlist, user_sentiment)
-    process_auto_trades(live_signals)
-
-    with st.spinner("Fetching Market Movers & Trends for 200+ Coins..."):
-        df_all_crypto = fetch_all_crypto()
-        if not df_all_crypto.empty:
-            adv = int((df_all_crypto['Change %'] > 0).sum())
-            dec = int((df_all_crypto['Change %'] < 0).sum())
-            df_renamed = df_all_crypto.rename(columns={'Asset': 'Stock', 'Change %': 'Pct'})
-            gainers = df_renamed[df_renamed['Pct'] > 0].head(5).to_dict('records')
-            losers = df_renamed[df_renamed['Pct'] < 0].sort_values(by='Pct', ascending=True).head(5).to_dict('records')
-            trend_scan_list = list(set([s['Stock'] for s in live_signals] + current_watchlist + [g['Stock'] for g in gainers] + [l['Stock'] for l in losers]))
-            trends = get_crypto_trends(trend_scan_list)
-        else:
-            adv, dec = 0, 0
-            gainers, losers, trends = [], [], []
-
-    important_assets = list(set([s['Stock'] for s in live_signals] + [g['Stock'] for g in gainers] + [l['Stock'] for l in losers] + current_watchlist))
-    filtered_trends = [t for t in trends if t['Stock'] in important_assets]
-
-    col1, col2, col3 = st.columns([1.25, 2.5, 1.25])
-
-    with col1:
-        st.markdown("<div class='section-title'>🔍 TREND CONTINUITY (CRYPTO)</div>", unsafe_allow_html=True)
-        if filtered_trends:
-            t_html = "<div class='table-container'><table class='v38-table'><tr><th>Asset 🔗</th><th>Status</th></tr>"
-            for t in filtered_trends: 
-                link = get_tv_link(t['Stock'])
-                t_html += f"<tr><td style='text-align:left; font-weight:bold;'><a href='{link}' target='_blank'>🔸 {t['Stock']}</a></td><td style='color:{t['Color']}; font-weight:bold;'>{t['Status']}</td></tr>"
-            t_html += "</table></div>"
-            st.markdown(t_html, unsafe_allow_html=True)
-        else: st.markdown("<p style='font-size:12px;text-align:center; color:#888;'>No 3-day trend found in active list.</p>", unsafe_allow_html=True)
-
-    with col2:
-        st.markdown("<div class='section-title'>📉 CRYPTO INDICES (LIVE)</div>", unsafe_allow_html=True)
-        p1_ltp, p1_chg, p1_pct = fetch_live_data("BTC-USD")
-        p2_ltp, p2_chg, p2_pct = fetch_live_data("ETH-USD")
-        p3_ltp, p3_chg, p3_pct = fetch_live_data("SOL-USD")
-        p4_ltp, p4_chg, p4_pct = fetch_live_data("BNB-USD")
-        p5_ltp, p5_chg, p5_pct = fetch_live_data("XRP-USD")
-        p6_ltp, p6_chg, p6_pct = fetch_live_data("DOGE-USD")
-        indices = [("BITCOIN", p1_ltp, p1_chg, p1_pct), ("ETHEREUM", p2_ltp, p2_chg, p2_pct), ("SOLANA", p3_ltp, p3_chg, p3_pct), ("BINANCE COIN", p4_ltp, p4_chg, p4_pct), ("RIPPLE", p5_ltp, p5_chg, p5_pct), ("DOGECOIN", p6_ltp, p6_chg, p6_pct)]
-        
-        idx_tv_map = {"BITCOIN": "BINANCE:BTCUSDT", "ETHEREUM": "BINANCE:ETHUSDT", "SOLANA": "BINANCE:SOLUSDT", "BINANCE COIN": "BINANCE:BNBUSDT", "RIPPLE": "BINANCE:XRPUSDT", "DOGECOIN": "BINANCE:DOGEUSDT"}
-        indices_html = "<div class='idx-container'>"
-        for name, val, chg, pct in indices:
-            clr = "green" if chg >= 0 else "red"
-            sign = "+" if chg >= 0 else ""
-            idx_link = f"https://in.tradingview.com/chart/?symbol={idx_tv_map[name]}"
-            indices_html += f"<div class='idx-box'><a href='{idx_link}' target='_blank' style='text-decoration:none; font-size:11px; color:#1a73e8; font-weight:bold;'>{name} 🔗</a><br><span style='font-size:15px; color:black; font-weight:bold;'>${fmt_price(val)}</span><br><span style='color:{clr}; font-size:11px; font-weight:bold;'>{sign}${fmt_price(chg)} ({sign}{pct:.2f}%)</span></div>"
-        indices_html += "</div>"
-        st.markdown(indices_html, unsafe_allow_html=True)
-
-        total_adv_dec = adv + dec
-        adv_pct = (adv / total_adv_dec) * 100 if total_adv_dec > 0 else 50
-        st.markdown(f"<div class='section-title'>📊 ADVANCE/ DECLINE (CRYPTO 200+)</div>", unsafe_allow_html=True)
-        adv_dec_html = f"<div class='adv-dec-container'><div class='adv-dec-bar'><div class='bar-green' style='width: {adv_pct}%;'></div><div class='bar-red' style='width: {100-adv_pct}%;'></div></div><div style='display:flex; justify-content:space-between; font-size:12px; font-weight:bold;'><span style='color:green;'>Advances: {adv}</span><span style='color:red;'>Declines: {dec}</span></div></div>"
-        st.markdown(adv_dec_html, unsafe_allow_html=True)
-
-        st.markdown(f"<div class='section-title'>🎯 LIVE SIGNALS FOR: {selected_sector} (1H HA+BB)</div>", unsafe_allow_html=True)
-        if len(live_signals) > 0:
-            sig_html = "<div class='table-container'><table class='v38-table'><tr><th>Asset 🔗</th><th>Entry</th><th>LTP</th><th>Signal</th><th>SL</th><th>Target (1:3)</th><th>Time</th></tr>"
-            for sig in live_signals:
-                sig_clr = "green" if sig['Signal'] == "BUY" else "red"
-                link = get_tv_link(sig['Stock'])
-                sig_html += f"<tr><td style='font-weight:bold;'><a href='{link}' target='_blank'>🔸 {sig['Stock']}</a></td><td>${fmt_price(sig['Entry'])}</td><td>${fmt_price(sig['LTP'])}</td><td style='color:white; background:{sig_clr}; font-weight:bold;'>{sig['Signal']}</td><td>${fmt_price(sig['SL'])}</td><td style='font-weight:bold; color:#856404;'>${fmt_price(sig['T2(1:3)'])}</td><td>{sig['Time']}</td></tr>"
-            sig_html += "</table></div>"
-            st.markdown(sig_html, unsafe_allow_html=True)
-        else: st.info("⏳ No fresh signals right now.")
-
-        st.markdown("<div class='section-title'>⏳ ACTIVE TRADES</div>", unsafe_allow_html=True)
-        if len(st.session_state.active_trades) > 0:
-            act_html = "<div class='table-container'><table class='v38-table'><tr><th>Asset 🔗</th><th>Signal</th><th>Entry</th><th>Live LTP</th><th>Live P&L</th><th>Target</th><th>SL</th><th>Time</th></tr>"
-            for t in st.session_state.active_trades:
-                link = get_tv_link(t['Stock'])
-                res = fetch_live_data(t['Stock'])
-                ltp = res[0] if res[0] > 0 else t['Entry'] 
-                points = ltp - t['Entry'] if t['Signal'] == 'BUY' else t['Entry'] - ltp
-                pnl_pct = (points / t['Entry']) * 100 if t['Entry'] > 0 else 0
-                pnl_color = "green" if points >= 0 else "red"
-                sign = "+" if points >= 0 else ""
-                act_html += f"<tr><td style='font-weight:bold;'><a href='{link}' target='_blank'>🔸 {t['Stock']}</a></td><td style='font-weight:bold;'>{t['Signal']}</td><td>${fmt_price(t['Entry'])}</td><td>${fmt_price(ltp)}</td><td style='color:{pnl_color}; font-weight:bold;'>{sign}${fmt_price(abs(points))} ({sign}{pnl_pct:.2f}%)</td><td style='color:#856404;'>${fmt_price(t['Target'])}</td><td style='color:#dc3545;'>${fmt_price(t['SL'])}</td><td>{t['Date']}</td></tr>"
-            act_html += "</table></div>"
-            st.markdown(act_html, unsafe_allow_html=True)
-        else: st.info("No trades are currently active.")
-
-        st.markdown("<div class='section-title'>📚 AUTO TRADE HISTORY</div>", unsafe_allow_html=True)
-        if len(st.session_state.trade_history) > 0:
-            hist_html = "<div class='table-container'><table class='v38-table'><tr><th>Asset 🔗</th><th>Signal</th><th>Entry</th><th>Exit</th><th>P&L (Pts)</th><th>Status</th><th>Time</th></tr>"
-            for t in st.session_state.trade_history:
-                link = get_tv_link(t['Stock'])
-                entry_p, exit_p = float(t['Entry']), float(t['Exit'])
-                points = exit_p - entry_p if t['Signal'] == 'BUY' else entry_p - exit_p
-                pnl_pct, pnl_color, sign = float(t.get('P&L %', 0)), "green" if points >= 0 else "red", "+" if points >= 0 else ""
-                hist_html += f"<tr><td style='font-weight:bold;'><a href='{link}' target='_blank'>🔸 {t['Stock']}</a></td><td style='font-weight:bold;'>{t['Signal']}</td><td>${fmt_price(entry_p)}</td><td>${fmt_price(exit_p)}</td><td style='color:{pnl_color}; font-weight:bold;'>{sign}${fmt_price(abs(points))} ({sign}{pnl_pct:.2f}%)</td><td style='font-weight:bold;'>{t['Status']}</td><td>{t['Date']}</td></tr>"
-            hist_html += "</table></div>"
-            st.markdown(hist_html, unsafe_allow_html=True)
-        else: st.info("No closed trades yet.")
-
-    with col3:
-        st.markdown("<div class='section-title'>🚀 LIVE TOP GAINERS</div>", unsafe_allow_html=True)
-        if gainers:
-            g_html = "<div class='table-container'><table class='v38-table'><tr><th>Asset 🔗</th><th>LTP</th><th>%</th></tr>"
-            for g in gainers: 
-                link = get_tv_link(g['Stock'])
-                g_html += f"<tr><td style='text-align:left; font-weight:bold;'><a href='{link}' target='_blank'>🔸 {g['Stock']}</a></td><td>${fmt_price(g['LTP'])}</td><td style='color:green; font-weight:bold;'>+{g['Pct']:.2f}%</td></tr>"
-            g_html += "</table></div>"
-            st.markdown(g_html, unsafe_allow_html=True)
-
-        st.markdown("<div class='section-title'>🔻 LIVE TOP LOSERS</div>", unsafe_allow_html=True)
-        if losers:
-            l_html = "<div class='table-container'><table class='v38-table'><tr><th>Asset 🔗</th><th>LTP</th><th>%</th></tr>"
-            for l in losers: 
-                link = get_tv_link(l['Stock'])
-                l_html += f"<tr><td style='text-align:left; font-weight:bold;'><a href='{link}' target='_blank'>🔸 {l['Stock']}</a></td><td>${fmt_price(l['LTP'])}</td><td style='color:red; font-weight:bold;'>{l['Pct']:.2f}%</td></tr>"
-            l_html += "</table></div>"
-            st.markdown(l_html, unsafe_allow_html=True)
-
-# ==================== MENU 2: LIVE CHART & MOMENTUM ====================
-elif page_selection == "📊 LIVE CHART & MOMENTUM":
-    st.markdown("<div class='section-title'>📊 LIVE FAST CHART & MOMENTUM DECAY FIELD</div>", unsafe_allow_html=True)
     
-    col_sel1, col_sel2 = st.columns([1, 2])
-    with col_sel1:
-        chart_coin = st.selectbox("Select Coin to Analyze:", sorted(ALL_CRYPTO), index=0)
+    # 🚨 THE NEW INTEGRATED DEEP ANALYSIS SECTION 🚨
+    st.markdown("<div class='section-title'>📊 DEEP ANALYSIS: LIVE CHART & MOMENTUM DECAY</div>", unsafe_allow_html=True)
+    
+    da_col1, da_col2 = st.columns([1, 2])
+    with da_col1:
+        chart_coin = st.selectbox("🔍 Select Asset from Market to Analyze:", sorted(ALL_CRYPTO), index=0)
         tv_symbol = f"BINANCE:{chart_coin.replace('-USD', 'USDT')}"
-    with col_sel2:
+    with da_col2:
         tf_options = {"1m": ("1", "1m"), "5m": ("5", "5m"), "15m": ("15", "15m"), "1H": ("60", "1h"), "4H": ("240", "4h"), "1D": ("D", "1d")}
-        selected_tf_label = st.radio("Select Timeframe (Updates Chart & Data):", list(tf_options.keys()), horizontal=True, index=3)
+        selected_tf_label = st.radio("Select Timeframe (Updates Chart & Momentum Data):", list(tf_options.keys()), horizontal=True, index=3)
         tv_interval, binance_interval = tf_options[selected_tf_label]
 
     col_chart, col_dash = st.columns([3, 1])
 
     with col_chart:
         tv_widget = f"""
-        <div class="tradingview-widget-container" style="height:600px;width:100%">
+        <div class="tradingview-widget-container" style="height:500px;width:100%">
           <div id="tradingview_dynamic" style="height:100%;width:100%"></div>
           <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
           <script type="text/javascript">
@@ -593,7 +441,7 @@ elif page_selection == "📊 LIVE CHART & MOMENTUM":
           </script>
         </div>
         """
-        components.html(tv_widget, height=600)
+        components.html(tv_widget, height=500)
 
     with col_dash:
         with st.spinner("Calculating Momentum..."):
@@ -606,7 +454,6 @@ elif page_selection == "📊 LIVE CHART & MOMENTUM":
             eta_blocks = int(min(decay_eta / 10, 1.0) * 8) if decay_eta > 0 else 0
             eta_vis = "▮" * eta_blocks + "▯" * (8 - eta_blocks)
             
-            # Decay curve generation
             spark = ""
             for k in range(20):
                 s_e = e0 * np.exp(-(np.log(2)/half_life if half_life > 0 else 0.1) * (k * (half_life*3/20)))
@@ -627,7 +474,131 @@ elif page_selection == "📊 LIVE CHART & MOMENTUM":
             </table>
             """
             st.markdown(mdf_dashboard, unsafe_allow_html=True)
-            st.info(f"💡 Showing Real-Time Math Physics for **{chart_coin}** on **{selected_tf_label}** Timeframe")
+
+    st.divider()
+    # -------------------------------------------------------------------------
+
+    with st.spinner(f"Scanning 1H Trend Breakouts (MDF + Donchian)..."): 
+        live_signals = run_crypto_advanced_strategy(current_watchlist, user_sentiment)
+    process_auto_trades(live_signals)
+
+    with st.spinner("Fetching Market Movers for 200+ Coins..."):
+        df_all_crypto = fetch_all_crypto()
+        if not df_all_crypto.empty:
+            adv = int((df_all_crypto['Change %'] > 0).sum())
+            dec = int((df_all_crypto['Change %'] < 0).sum())
+            df_renamed = df_all_crypto.rename(columns={'Asset': 'Stock', 'Change %': 'Pct'})
+            gainers = df_renamed[df_renamed['Pct'] > 0].head(5).to_dict('records')
+            losers = df_renamed[df_renamed['Pct'] < 0].sort_values(by='Pct', ascending=True).head(5).to_dict('records')
+        else:
+            adv, dec = 0, 0
+            gainers, losers = [], []
+
+    col1, col2, col3 = st.columns([1.25, 2.5, 1.25])
+
+    with col1:
+        st.markdown("<div class='section-title'>📊 SECTOR PERFORMANCE</div>", unsafe_allow_html=True)
+        with st.spinner("Fetching Sectors..."): real_sectors = calc_sector_perf(working_sectors)
+        if real_sectors:
+            sec_html = "<div>"
+            for s in real_sectors:
+                c = "green" if s['Pct'] >= 0 else "red"
+                bc = "bar-fg-green" if s['Pct'] >= 0 else "bar-fg-red"
+                sign = "+" if s['Pct'] >= 0 else ""
+                sec_html += f"""
+                <details class='sector-details'>
+                    <summary class='sector-summary'>
+                        <div style='width: 45%; color:#003366; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;'>📂 {s['Sector']}</div>
+                        <div style='width: 25%; color:{c}; text-align: center;'>{sign}{s['Pct']:.2f}%</div>
+                        <div style='width: 30%;'><div class='bar-bg'><div class='{bc}' style='width:{s['Width']}%;'></div></div></div>
+                    </summary>
+                    <div class='sector-content'>
+                """
+                for st_data in s['Stocks']:
+                    st_color = "green" if st_data['Pct'] >= 0 else "red"
+                    st_sign = "+" if st_data['Pct'] >= 0 else ""
+                    sec_html += f"<span class='stock-chip' style='color:{st_color};'>{st_data['Stock']} ({st_sign}{st_data['Pct']:.2f}%)</span>"
+                sec_html += "</div></details>"
+            sec_html += "</div>"
+            st.markdown(sec_html, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("<div class='section-title'>📉 CRYPTO INDICES (LIVE)</div>", unsafe_allow_html=True)
+        p1_ltp, p1_chg, p1_pct = fetch_live_data("BTC-USD")
+        p2_ltp, p2_chg, p2_pct = fetch_live_data("ETH-USD")
+        p3_ltp, p3_chg, p3_pct = fetch_live_data("SOL-USD")
+        p4_ltp, p4_chg, p4_pct = fetch_live_data("BNB-USD")
+        p5_ltp, p5_chg, p5_pct = fetch_live_data("XRP-USD")
+        p6_ltp, p6_chg, p6_pct = fetch_live_data("DOGE-USD")
+        indices = [("BITCOIN", p1_ltp, p1_chg, p1_pct), ("ETHEREUM", p2_ltp, p2_chg, p2_pct), ("SOLANA", p3_ltp, p3_chg, p3_pct), ("BINANCE COIN", p4_ltp, p4_chg, p4_pct), ("RIPPLE", p5_ltp, p5_chg, p5_pct), ("DOGECOIN", p6_ltp, p6_chg, p6_pct)]
+        
+        indices_html = "<div class='idx-container'>"
+        for name, val, chg, pct in indices:
+            clr = "green" if chg >= 0 else "red"
+            sign = "+" if chg >= 0 else ""
+            indices_html += f"<div class='idx-box'><span style='font-size:11px; color:#1a73e8; font-weight:bold;'>{name}</span><br><span style='font-size:15px; color:black; font-weight:bold;'>${fmt_price(val)}</span><br><span style='color:{clr}; font-size:11px; font-weight:bold;'>{sign}${fmt_price(chg)} ({sign}{pct:.2f}%)</span></div>"
+        indices_html += "</div>"
+        st.markdown(indices_html, unsafe_allow_html=True)
+
+        total_adv_dec = adv + dec
+        adv_pct = (adv / total_adv_dec) * 100 if total_adv_dec > 0 else 50
+        st.markdown(f"<div class='section-title'>📊 ADVANCE/ DECLINE (CRYPTO 200+)</div>", unsafe_allow_html=True)
+        adv_dec_html = f"<div class='adv-dec-container'><div class='adv-dec-bar'><div class='bar-green' style='width: {adv_pct}%;'></div><div class='bar-red' style='width: {100-adv_pct}%;'></div></div><div style='display:flex; justify-content:space-between; font-size:12px; font-weight:bold;'><span style='color:green;'>Advances: {adv}</span><span style='color:red;'>Declines: {dec}</span></div></div>"
+        st.markdown(adv_dec_html, unsafe_allow_html=True)
+
+        st.markdown(f"<div class='section-title'>🎯 LIVE SIGNALS: {selected_sector} (MDF + DONCHIAN)</div>", unsafe_allow_html=True)
+        if len(live_signals) > 0:
+            sig_html = "<div class='table-container'><table class='v38-table'><tr><th>Asset</th><th>Entry</th><th>LTP</th><th>Signal</th><th>SL</th><th>Target (1:3)</th><th>Time</th></tr>"
+            for sig in live_signals:
+                sig_clr = "green" if sig['Signal'] == "BUY" else "red"
+                sig_html += f"<tr><td style='font-weight:bold;'>🔸 {sig['Stock']}</td><td>${fmt_price(sig['Entry'])}</td><td>${fmt_price(sig['LTP'])}</td><td style='color:white; background:{sig_clr}; font-weight:bold;'>{sig['Signal']}</td><td>${fmt_price(sig['SL'])}</td><td style='font-weight:bold; color:#856404;'>${fmt_price(sig['Target'])}</td><td>{sig['Time']}</td></tr>"
+            sig_html += "</table></div>"
+            st.markdown(sig_html, unsafe_allow_html=True)
+        else: st.info("⏳ No trend breakouts matching MDF Phase right now.")
+
+        st.markdown("<div class='section-title'>⏳ ACTIVE TRADES</div>", unsafe_allow_html=True)
+        if len(st.session_state.active_trades) > 0:
+            act_html = "<div class='table-container'><table class='v38-table'><tr><th>Asset</th><th>Signal</th><th>Entry</th><th>Live LTP</th><th>Live P&L</th><th>Target</th><th>SL</th><th>Time</th></tr>"
+            for t in st.session_state.active_trades:
+                res = fetch_live_data(t['Stock'])
+                ltp = res[0] if res[0] > 0 else t['Entry'] 
+                points = ltp - t['Entry'] if t['Signal'] == 'BUY' else t['Entry'] - ltp
+                pnl_pct = (points / t['Entry']) * 100 if t['Entry'] > 0 else 0
+                pnl_color = "green" if points >= 0 else "red"
+                sign = "+" if points >= 0 else ""
+                act_html += f"<tr><td style='font-weight:bold;'>🔸 {t['Stock']}</td><td style='font-weight:bold;'>{t['Signal']}</td><td>${fmt_price(t['Entry'])}</td><td>${fmt_price(ltp)}</td><td style='color:{pnl_color}; font-weight:bold;'>{sign}${fmt_price(abs(points))} ({sign}{pnl_pct:.2f}%)</td><td style='color:#856404;'>${fmt_price(t['Target'])}</td><td style='color:#dc3545;'>${fmt_price(t['SL'])}</td><td>{t['Date']}</td></tr>"
+            act_html += "</table></div>"
+            st.markdown(act_html, unsafe_allow_html=True)
+        else: st.info("No trades are currently active.")
+
+        st.markdown("<div class='section-title'>📚 AUTO TRADE HISTORY</div>", unsafe_allow_html=True)
+        if len(st.session_state.trade_history) > 0:
+            hist_html = "<div class='table-container'><table class='v38-table'><tr><th>Asset</th><th>Signal</th><th>Entry</th><th>Exit</th><th>P&L (Pts)</th><th>Status</th><th>Time</th></tr>"
+            for t in st.session_state.trade_history:
+                entry_p, exit_p = float(t['Entry']), float(t['Exit'])
+                points = exit_p - entry_p if t['Signal'] == 'BUY' else entry_p - exit_p
+                pnl_pct, pnl_color, sign = float(t.get('P&L %', 0)), "green" if points >= 0 else "red", "+" if points >= 0 else ""
+                hist_html += f"<tr><td style='font-weight:bold;'>🔸 {t['Stock']}</td><td style='font-weight:bold;'>{t['Signal']}</td><td>${fmt_price(entry_p)}</td><td>${fmt_price(exit_p)}</td><td style='color:{pnl_color}; font-weight:bold;'>{sign}${fmt_price(abs(points))} ({sign}{pnl_pct:.2f}%)</td><td style='font-weight:bold;'>{t['Status']}</td><td>{t['Date']}</td></tr>"
+            hist_html += "</table></div>"
+            st.markdown(hist_html, unsafe_allow_html=True)
+        else: st.info("No closed trades yet.")
+
+    with col3:
+        st.markdown("<div class='section-title'>🚀 LIVE TOP GAINERS</div>", unsafe_allow_html=True)
+        if gainers:
+            g_html = "<div class='table-container'><table class='v38-table'><tr><th>Asset</th><th>LTP</th><th>%</th></tr>"
+            for g in gainers: 
+                g_html += f"<tr><td style='text-align:left; font-weight:bold;'>🔸 {g['Stock']}</td><td>${fmt_price(g['LTP'])}</td><td style='color:green; font-weight:bold;'>+{g['Pct']:.2f}%</td></tr>"
+            g_html += "</table></div>"
+            st.markdown(g_html, unsafe_allow_html=True)
+
+        st.markdown("<div class='section-title'>🔻 LIVE TOP LOSERS</div>", unsafe_allow_html=True)
+        if losers:
+            l_html = "<div class='table-container'><table class='v38-table'><tr><th>Asset</th><th>LTP</th><th>%</th></tr>"
+            for l in losers: 
+                l_html += f"<tr><td style='text-align:left; font-weight:bold;'>🔸 {l['Stock']}</td><td>${fmt_price(l['LTP'])}</td><td style='color:red; font-weight:bold;'>{l['Pct']:.2f}%</td></tr>"
+            l_html += "</table></div>"
+            st.markdown(l_html, unsafe_allow_html=True)
 
 # ==================== MENU 3: REAL TRADE (CoinDCX) ====================
 elif page_selection == "⚡ REAL TRADE (CoinDCX)":
@@ -715,8 +686,6 @@ elif page_selection == "📊 Backtest Engine":
                                 trades.append({"Date": bt_data.index[i].strftime('%Y-%m-%d'), "Setup": "3 Days RED", "Signal": "BUY", "Entry": fmt_price(entry_price), "Exit": fmt_price(exit_price), "P&L %": round(pnl, 2)})
                     bt_df = pd.DataFrame(trades)
                     if not bt_df.empty:
-                        link = get_tv_link(bt_stock)
-                        st.markdown(f"### <a href='{link}' target='_blank' style='text-decoration:none; color:#1a73e8;'>✅ Click to Open Chart for {bt_stock} 🔗</a>", unsafe_allow_html=True)
                         total_pnl = bt_df['P&L %'].sum()
                         win_rate = (len(bt_df[bt_df['P&L %'] > 0]) / len(bt_df)) * 100
                         m_col1, m_col2, m_col3 = st.columns(3)
@@ -730,7 +699,7 @@ elif page_selection == "📊 Backtest Engine":
 # ==================== MENU 6: SETTINGS ====================
 elif page_selection == "⚙️ Scanner Settings":
     st.markdown("<div class='section-title'>⚙️ System Status</div>", unsafe_allow_html=True)
-    st.success("✅ Exclusive Crypto Terminal App \n\n ✅ Dynamic Timeframe-linked TradingView Chart \n\n ✅ Real-time Momentum Decay Calculation \n\n ✅ Highly Optimized Engine")
+    st.success("✅ Exclusive Crypto Terminal App \n\n ✅ Deep Analysis Section Integrated (Top of Main Terminal) \n\n ✅ Advanced Scanner Logic Active (Donchian + MDF) \n\n ✅ Highly Optimized Engine")
 
 if st.session_state.auto_ref:
     time.sleep(refresh_time * 60)
