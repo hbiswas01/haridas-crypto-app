@@ -60,6 +60,7 @@ css_string = (
     "<style>"
     "#MainMenu {visibility: hidden;} footer {visibility: hidden;} .stApp { background-color: #f0f4f8; font-family: 'Segoe UI', sans-serif; } "
     ".block-container { padding-top: 3rem !important; padding-bottom: 1rem !important; padding-left: 1rem !important; padding-right: 1rem !important; } "
+    ".top-nav { background-color: #002b36; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #00ffd0; border-radius: 8px; margin-bottom: 10px; box-shadow: 0px 4px 10px rgba(0,0,0,0.2); } "
     ".section-title { background: linear-gradient(90deg, #002b36 0%, #00425a 100%); color: #00ffd0; font-size: 13px; font-weight: 800; padding: 10px 15px; text-transform: uppercase; border-left: 5px solid #00ffd0; border-radius: 5px; margin-top: 15px; margin-bottom: 10px;} "
     ".table-container { overflow-x: auto; width: 100%; border-radius: 5px; } "
     ".v38-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 11px; color: black; background: white; border: 1px solid #b0c4de; margin-bottom: 10px; white-space: nowrap; } "
@@ -79,16 +80,17 @@ css_string = (
     ".stock-chip { font-size: 10px; padding: 4px 6px; border-radius: 4px; border: 1px solid #ccc; background: #fff; text-decoration: none !important; font-weight: bold;} "
     ".calc-box { background: white; border: 1px solid #00ffd0; padding: 15px; border-radius: 8px; box-shadow: 0px 2px 8px rgba(0,0,0,0.1); margin-top: 15px;} "
     
-    "/* Momentum Dashboard Custom CSS */"
-    ".mdf-table { background-color: rgba(12, 14, 28, 0.95); border: 2px solid rgb(30, 80, 140); color: white; font-family: monospace; width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }"
-    ".mdf-table th, .mdf-table td { border: 1px solid rgb(25, 65, 120); padding: 6px 8px; text-align: center; }"
+    "/* Momentum Dashboard Custom CSS Fixed For Clipping */"
+    ".mdf-table { background-color: rgba(12, 14, 28, 0.95); border: 2px solid rgb(30, 80, 140); color: white; font-family: monospace; width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; margin-top: 10px; }"
+    ".mdf-table th, .mdf-table td { border: 1px solid rgb(25, 65, 120); padding: 6px 4px; text-align: center; overflow: hidden; white-space: nowrap; }"
     ".mdf-header { background-color: rgba(8, 10, 22, 0.9); color: rgb(65, 195, 115); font-weight: bold; font-size: 14px; }"
-    ".mdf-label { color: rgb(120, 122, 142); text-align: left !important; font-size: 11px;}"
+    ".mdf-label { color: rgb(120, 122, 142); text-align: left !important; font-size: 11px; }"
     ".mdf-value { color: rgb(65, 195, 115); }"
     ".mdf-right { text-align: right !important; }"
     ".mdf-white { color: rgb(222, 224, 238); }"
-    ".mdf-cyan { color: rgb(60, 200, 255); }"
-    ".mdf-orange { color: rgb(255, 130, 40); }"
+    ".mdf-cyan { color: rgb(60, 200, 255) !important; }"
+    ".mdf-orange { color: rgb(255, 130, 40) !important; }"
+    ".mdf-red { color: rgb(255, 60, 60) !important; }"
     "</style>"
 )
 st.markdown(css_string, unsafe_allow_html=True)
@@ -151,7 +153,7 @@ def fetch_live_data(ticker_symbol):
             return (0.0, 0.0, 0.0) 
     except: return (0.0, 0.0, 0.0)
 
-# 🚨 THE NEW NORMALIZED PHYSICS ENGINE 🚨
+# 🚨 THE PERFECTED NORMALIZED PHYSICS ENGINE 🚨
 def calculate_mdf_physics(df):
     if df.empty or len(df) < 20: 
         return 50, "NEUTRAL", 2.5, 8.0, 0, 15.0, 100, 10, 50
@@ -159,7 +161,7 @@ def calculate_mdf_physics(df):
     closes = df['Close'].values
     volumes = df['Volume'].values
 
-    # --- ENERGY & PHASE (Using Normalized RSI for perfect 0-100 scale) ---
+    # Calculate RSI for True Energy/Momentum
     deltas = np.diff(closes)
     up = np.where(deltas > 0, deltas, 0)
     down = np.where(deltas < 0, -deltas, 0)
@@ -168,23 +170,32 @@ def calculate_mdf_physics(df):
     roll_down = np.mean(down[-14:]) if len(down) >= 14 else np.mean(down)
     
     rs = roll_up / roll_down if roll_down != 0 else 1.0
-    rsi = 100.0 - (100.0 / (1.0 + rs))
+    rsi = 100.0 - (100.0 / (1.0 + rs)) if roll_down != 0 else 100.0
 
-    # Bounded Energy Percentage (Never 0%, never 100%)
-    energy_pct = int(max(5, min(99, rsi)))  
-    phase = "BULL" if closes[-1] >= closes[-10] else "BEAR"
+    # FIX: Energy is deviation from 50 (Both massive UP and massive DOWN mean HIGH ENERGY)
+    momentum_strength = abs(rsi - 50) / 50.0  # Scales 0.0 to 1.0
+    energy_pct = int(momentum_strength * 100)
+    energy_pct = max(5, min(100, energy_pct)) # Never 0%
 
-    # --- E0 INITIAL (Normalized Scale 1.0 to 5.0) ---
-    # Calculates momentum strength as deviation from neutral 50
-    momentum_strength = abs(rsi - 50) / 50.0  
+    phase = "BULL" if rsi >= 50 else "BEAR"
+
+    # E0 INITIAL (Normalized Scale 1.0 to 5.0)
     e0 = round(1.0 + (momentum_strength * 4.0), 2)
 
-    # --- HALF-LIFE & ETA ---
-    half_life = round(max(3.0, 12.0 - (momentum_strength * 6)), 1)
-    elp_bars = int(np.random.uniform(0, 4)) # Emulated recent bar count
-    decay_eta = round(max(0.0, half_life * 3.0 - elp_bars), 1)
+    # HALF-LIFE & ETA
+    half_life = round(max(3.0, 15.0 - (momentum_strength * 10)), 1)
+    
+    # Calculate ELP (Bars since phase change approx)
+    elp_bars = 0
+    for i in range(1, min(15, len(closes))):
+        is_bull_candle = closes[-i] >= closes[-i-1]
+        if (phase == "BULL" and not is_bull_candle) or (phase == "BEAR" and is_bull_candle):
+            break
+        elp_bars += 1
+        
+    decay_eta = round(max(0.0, (half_life * 3.0) - elp_bars), 1)
 
-    # --- NORMALIZED METRICS (Fixing the 79334 bug) ---
+    # Normalized Stats (Fixing the 79334 bug)
     vol_mean = np.mean(volumes[-20:]) + 1e-9
     vol_spike = volumes[-1] / vol_mean
     
@@ -207,7 +218,6 @@ def get_dynamic_momentum(ticker, interval_binance):
                 return calculate_mdf_physics(df)
     except: pass
     
-    # Fallback to Yahoo if Binance blocked
     try:
         yf_map = {"1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "1h", "1d": "1d"}
         yf_int = yf_map.get(interval_binance, "1h")
@@ -219,6 +229,7 @@ def get_dynamic_momentum(ticker, interval_binance):
     
     return 50, "NEUTRAL", 2.5, 8.0, 0, 15.0, 100, 10, 50
 
+# 🚨 SCANNER UPGRADED TO 10-PERIOD DONCHIAN FOR FASTER SIGNALS 🚨
 @st.cache_data(ttl=60, show_spinner=False)
 def run_crypto_advanced_strategy(crypto_list, sentiment="BOTH"):
     signals = []
@@ -232,27 +243,29 @@ def run_crypto_advanced_strategy(crypto_list, sentiment="BOTH"):
             df = pd.DataFrame(res, columns=['Open time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close time', 'Quote asset volume', 'Number of trades', 'Taker buy base asset volume', 'Taker buy quote asset volume', 'Ignore'])
             df[['Open', 'High', 'Low', 'Close', 'Volume']] = df[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
             
-            df['Upper_20'] = df['High'].rolling(20).max().shift(1)
-            df['Lower_20'] = df['Low'].rolling(20).min().shift(1)
-            df['SL_Long'] = df['Low'].rolling(10).min().shift(1)
-            df['SL_Short'] = df['High'].rolling(10).max().shift(1)
+            # Using 10-Period Donchian to trigger more frequently
+            df['Upper_10'] = df['High'].rolling(10).max().shift(1)
+            df['Lower_10'] = df['Low'].rolling(10).min().shift(1)
+            df['SL_Long'] = df['Low'].rolling(8).min().shift(1)
+            df['SL_Short'] = df['High'].rolling(8).max().shift(1)
             
             energy_pct, phase, _, _, _, _, _, _, _ = calculate_mdf_physics(df)
             
             current_close = df['Close'].iloc[-1]
             current_high = df['High'].iloc[-1]
             current_low = df['Low'].iloc[-1]
-            upper_20 = df['Upper_20'].iloc[-1]
-            lower_20 = df['Lower_20'].iloc[-1]
+            upper_10 = df['Upper_10'].iloc[-1]
+            lower_10 = df['Lower_10'].iloc[-1]
             
             signal = None
             entry = current_close
             sl = 0.0
             
-            if current_high >= upper_20 and phase == "BULL":
+            # Match Breakout with MDF Phase
+            if current_high >= upper_10 and phase == "BULL":
                 signal = "BUY"
                 sl = df['SL_Long'].iloc[-1]
-            elif current_low <= lower_20 and phase == "BEAR":
+            elif current_low <= lower_10 and phase == "BEAR":
                 signal = "SHORT"
                 sl = df['SL_Short'].iloc[-1]
                 
@@ -505,37 +518,47 @@ if page_selection == "📈 MAIN TERMINAL":
             components.html(tv_widget, height=500)
 
         with col_dash:
-            with st.spinner("Analyzing..."):
+            with st.spinner("Analyzing Physics..."):
                 energy_pct, phase, e0, half_life, elp_bars, decay_eta, impulses, exhaustions, divergences = get_dynamic_momentum(clicked_coin, binance_interval)
                 
                 phase_color = "mdf-cyan" if phase == "BULL" else "mdf-orange"
-                energy_bar = "█" * int(energy_pct/10) + "░" * (10 - int(energy_pct/10))
-                e0_cls = "Extreme" if e0 > 3.5 else "Strong" if e0 > 2.5 else "Moderate" if e0 > 1.5 else "Light"
                 
-                eta_blocks = int(min(decay_eta / 10, 1.0) * 8) if decay_eta > 0 else 0
+                # Dynamic Bar Logic (Max 10 chars so it doesn't break CSS)
+                filled_bars = int((energy_pct / 100.0) * 10)
+                energy_bar = "█" * filled_bars + "░" * (10 - filled_bars)
+                
+                e0_cls = "Extreme" if e0 > 3.5 else "Strong" if e0 > 2.5 else "Moderate" if e0 > 1.5 else "Light"
+                eta_blocks = int(min(decay_eta / 10.0, 1.0) * 8) if decay_eta > 0 else 0
                 eta_vis = "▮" * eta_blocks + "▯" * (8 - eta_blocks)
                 
+                # Decay Curve Generation (Perfect Curve Logic)
                 spark = ""
                 for k in range(20):
-                    s_e = e0 * np.exp(-(np.log(2)/max(half_life, 1.0)) * (k * (max(half_life, 1.0)*3/20)))
-                    s_n = max(0.0, min(1.0, s_e / 3.0))
-                    spark += "▇" if s_n > 0.82 else "▆" if s_n > 0.66 else "▅" if s_n > 0.52 else "▄" if s_n > 0.38 else "▃" if s_n > 0.25 else "▂" if s_n > 0.13 else "▁" if s_n > 0.04 else "·"
+                    t = (k / 19.0) * (max(half_life, 1.0) * 3.0)
+                    s_e = e0 * np.exp(-(np.log(2)/max(half_life, 1.0)) * t)
+                    s_n = s_e / max(e0, 0.001) 
+                    spark += "▇" if s_n > 0.85 else "▆" if s_n > 0.7 else "▅" if s_n > 0.55 else "▄" if s_n > 0.4 else "▃" if s_n > 0.25 else "▂" if s_n > 0.1 else "▁" if s_n > 0.02 else "·"
                 
+                energy_color = 'rgb(65,195,115)' if phase == 'BULL' else 'rgb(255,130,40)'
+
+                # 🚨 THE FIXED HTML TABLE WITH PROPER WIDTHS 🚨
                 mdf_dashboard = f"""
                 <table class="mdf-table">
+                    <colgroup><col width="30%"/><col width="45%"/><col width="25%"/></colgroup>
                     <tr><td colspan="3" class="mdf-header">MOMENTUM DECAY FIELD</td></tr>
-                    <tr><td class="mdf-label">ENERGY</td><td class="mdf-value" style="color: {'rgb(65,195,115)' if energy_pct >=50 else 'rgb(255,130,40)'}">{energy_bar}</td><td class="mdf-right mdf-value">{energy_pct}%</td></tr>
-                    <tr><td class="mdf-label">PHASE</td><td class="mdf-value" style="color: {'rgb(65,195,115)' if phase == 'BULL' else 'rgb(255,130,40)'}">CHARGED</td><td class="mdf-right {phase_color}">{phase}</td></tr>
+                    <tr><td class="mdf-label">ENERGY</td><td class="mdf-value" style="color: {energy_color}">{energy_bar}</td><td class="mdf-right mdf-value" style="color: {energy_color}">{energy_pct}%</td></tr>
+                    <tr><td class="mdf-label">PHASE</td><td class="mdf-value" style="color: {energy_color}">CHARGED</td><td class="mdf-right {phase_color}">{phase}</td></tr>
                     <tr><td class="mdf-label">E0 INITIAL</td><td class="mdf-white">{e0:.2f}</td><td class="mdf-right mdf-cyan">{e0_cls}</td></tr>
                     <tr><td class="mdf-label">HALF-LIFE</td><td class="mdf-white">{half_life} bars</td><td class="mdf-right mdf-label">ELP {elp_bars}</td></tr>
-                    <tr><td class="mdf-label">ETA TO EXH</td><td class="mdf-orange">{decay_eta} bars</td><td class="mdf-right mdf-orange">{eta_vis}</td></tr>
-                    <tr><td class="mdf-label">DECAY CURVE</td><td class="mdf-value" style="font-size:10px;">{spark}</td><td class="mdf-right mdf-label">NOW >></td></tr>
+                    <tr><td class="mdf-label">ETA TO EXH</td><td class="mdf-orange">{decay_eta} bars</td><td class="mdf-right mdf-orange" style="font-size:10px;">{eta_vis}</td></tr>
+                    <tr><td class="mdf-label">DECAY CURVE</td><td class="mdf-value" style="font-size:10px; letter-spacing: -1px; color:{energy_color}">{spark}</td><td class="mdf-right mdf-label">NOW >></td></tr>
                     <tr><td class="mdf-label" style="text-align:center !important;">IMPULSES</td><td class="mdf-label" style="text-align:center !important;">EXHAUSTIONS</td><td class="mdf-label" style="text-align:center !important;">DIVERGENCES</td></tr>
                     <tr><td class="mdf-white">{impulses}</td><td style="color:rgb(255, 195, 0);">{exhaustions}</td><td style="color:rgb(255, 120, 0);">{divergences}</td></tr>
                 </table>
                 """
                 st.markdown(mdf_dashboard, unsafe_allow_html=True)
 
+            # 🚨 QUICK TRADE PANEL WITH SL/TP 🚨
             st.markdown("<div style='background: rgba(12, 14, 28, 0.95); padding: 10px; border-radius: 5px; border: 2px solid #00ffd0; margin-top: 15px;'>", unsafe_allow_html=True)
             st.markdown(f"<div style='color:#00ffd0; font-weight:bold; font-size:13px; text-align:center; margin-bottom:8px;'>⚡ INSTANT ORDER: {clicked_coin}</div>", unsafe_allow_html=True)
             
@@ -792,7 +815,7 @@ elif page_selection == "📊 Backtest Engine":
 # ==================== MENU 4: SETTINGS ====================
 elif page_selection == "⚙️ Scanner Settings":
     st.markdown("<div class='section-title'>⚙️ System Status</div>", unsafe_allow_html=True)
-    st.success("✅ Exclusive Crypto Terminal App \n\n ✅ Dual Binance/YFinance MDF Engine Active \n\n ✅ Advanced Quick Trade (SL/TP) Active \n\n ✅ Normalized Decay Physics Applied")
+    st.success("✅ Exclusive Crypto Terminal App \n\n ✅ PERFECT Normalized MDF Physics Engine Active \n\n ✅ 10-Period Fast Signal Breakout Scanner \n\n ✅ Table CSS Fixed (No Overflow)")
 
 if st.session_state.auto_ref:
     time.sleep(refresh_time * 60)
