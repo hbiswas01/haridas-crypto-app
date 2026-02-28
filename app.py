@@ -60,6 +60,7 @@ css_string = (
     "<style>"
     "#MainMenu {visibility: hidden;} footer {visibility: hidden;} .stApp { background-color: #f0f4f8; font-family: 'Segoe UI', sans-serif; } "
     ".block-container { padding-top: 3rem !important; padding-bottom: 1rem !important; padding-left: 1rem !important; padding-right: 1rem !important; } "
+    ".top-nav { background-color: #002b36; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #00ffd0; border-radius: 8px; margin-bottom: 10px; box-shadow: 0px 4px 10px rgba(0,0,0,0.2); } "
     ".section-title { background: linear-gradient(90deg, #002b36 0%, #00425a 100%); color: #00ffd0; font-size: 13px; font-weight: 800; padding: 10px 15px; text-transform: uppercase; border-left: 5px solid #00ffd0; border-radius: 5px; margin-top: 15px; margin-bottom: 10px;} "
     ".table-container { overflow-x: auto; width: 100%; border-radius: 5px; } "
     ".v38-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 11px; color: black; background: white; border: 1px solid #b0c4de; margin-bottom: 10px; white-space: nowrap; } "
@@ -78,6 +79,7 @@ css_string = (
     ".sector-content { padding: 8px; border-top: 1px solid #eee; display: flex; flex-wrap: wrap; gap: 5px; background: #fafafa; } "
     ".stock-chip { font-size: 10px; padding: 4px 6px; border-radius: 4px; border: 1px solid #ccc; background: #fff; text-decoration: none !important; font-weight: bold;} "
     ".calc-box { background: white; border: 1px solid #00ffd0; padding: 15px; border-radius: 8px; box-shadow: 0px 2px 8px rgba(0,0,0,0.1); margin-top: 15px;} "
+    
     "/* Momentum Dashboard Custom CSS */"
     ".mdf-table { background-color: rgba(12, 14, 28, 0.95); border: 2px solid rgb(30, 80, 140); color: white; font-family: monospace; width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }"
     ".mdf-table th, .mdf-table td { border: 1px solid rgb(25, 65, 120); padding: 6px 8px; text-align: center; }"
@@ -381,7 +383,8 @@ def place_coindcx_order(market, side, order_type, price, quantity):
 # --- Sidebar ---
 with st.sidebar:
     st.markdown("### ₿ CRYPTO DASHBOARD")
-    menu_options = ["📈 MAIN TERMINAL", "⚡ REAL TRADE (CoinDCX)", "🧮 Futures Risk Calculator", "📊 Backtest Engine", "⚙️ Scanner Settings"]
+    # 🚨 REMOVED REAL TRADE FROM MENU 🚨
+    menu_options = ["📈 MAIN TERMINAL", "🧮 Futures Risk Calculator", "📊 Backtest Engine", "⚙️ Scanner Settings"]
     page_selection = st.radio("Select Menu:", menu_options)
     st.divider()
     
@@ -423,7 +426,7 @@ with st.sidebar:
         time.sleep(1)
         st.rerun()
 
-# 🚨 THE ZERO-LATENCY JS CLOCK TOP NAV 🚨
+# --- Top Nav ---
 top_nav_html = """
 <style>body { margin: 0; padding: 0; overflow: hidden; background: transparent; }</style>
 <div style="font-family: 'Segoe UI', sans-serif; background-color: #002b36; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #00ffd0; border-radius: 8px; box-shadow: 0px 4px 10px rgba(0,0,0,0.2);">
@@ -454,13 +457,13 @@ with col_ref2:
         st.cache_data.clear()
         st.rerun()
 
-# ==================== MENU 1: MAIN TERMINAL (INTEGRATED POP-UP UX) ====================
+# ==================== MENU 1: MAIN TERMINAL ====================
 if page_selection == "📈 MAIN TERMINAL":
 
-    # 🚨 CLICK-TO-OPEN DEEP ANALYSIS CHART POP-UP 🚨
+    # 🚨 CLICK-TO-OPEN DEEP ANALYSIS CHART & ONE-CLICK EXECUTION 🚨
     clicked_coin = st.query_params.get("coin")
     if clicked_coin and clicked_coin in ALL_CRYPTO:
-        st.markdown(f"<div class='section-title' style='background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%); color: white; border-left: 5px solid #00ffd0;'>🔬 DEEP ANALYSIS: {clicked_coin}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='section-title' style='background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%); color: white; border-left: 5px solid #00ffd0;'>🔬 DEEP ANALYSIS & QUICK TRADE: {clicked_coin}</div>", unsafe_allow_html=True)
         
         da_c1, da_c2 = st.columns([1, 3])
         with da_c1:
@@ -503,7 +506,7 @@ if page_selection == "📈 MAIN TERMINAL":
             components.html(tv_widget, height=500)
 
         with col_dash:
-            with st.spinner("Calculating Momentum..."):
+            with st.spinner("Analyzing..."):
                 energy_pct, phase, e0, half_life, elp_bars, decay_eta, impulses, exhaustions, divergences = get_dynamic_momentum(clicked_coin, binance_interval)
                 
                 phase_color = "mdf-cyan" if phase == "BULL" else "mdf-orange"
@@ -521,7 +524,7 @@ if page_selection == "📈 MAIN TERMINAL":
                 
                 mdf_dashboard = f"""
                 <table class="mdf-table">
-                    <tr><td colspan="3" class="mdf-header">MOMENTUM DECAY FIELD[BullByte]</td></tr>
+                    <tr><td colspan="3" class="mdf-header">MOMENTUM DECAY FIELD</td></tr>
                     <tr><td class="mdf-label">ENERGY</td><td class="mdf-value" style="color: {'rgb(65,195,115)' if energy_pct >=50 else 'rgb(255,130,40)'}">{energy_bar}</td><td class="mdf-right mdf-value">{energy_pct}%</td></tr>
                     <tr><td class="mdf-label">PHASE</td><td class="mdf-value" style="color: {'rgb(65,195,115)' if phase == 'BULL' else 'rgb(255,130,40)'}">CHARGED</td><td class="mdf-right {phase_color}">{phase}</td></tr>
                     <tr><td class="mdf-label">E0 INITIAL</td><td class="mdf-white">{e0:.2f}</td><td class="mdf-right mdf-cyan">{e0_cls}</td></tr>
@@ -533,6 +536,32 @@ if page_selection == "📈 MAIN TERMINAL":
                 </table>
                 """
                 st.markdown(mdf_dashboard, unsafe_allow_html=True)
+
+            # 🚨 ONE-CLICK TRADE EXECUTION PANEL 🚨
+            st.markdown("<div style='background: rgba(12, 14, 28, 0.95); padding: 10px; border-radius: 5px; border: 2px solid #00ffd0; margin-top: 15px;'>", unsafe_allow_html=True)
+            st.markdown(f"<div style='color:#00ffd0; font-weight:bold; font-size:13px; text-align:center; margin-bottom:8px;'>⚡ INSTANT ORDER: {clicked_coin}</div>", unsafe_allow_html=True)
+            
+            live_price = fetch_live_data(clicked_coin)[0]
+            with st.form("quick_trade_form"):
+                tc1, tc2 = st.columns(2)
+                with tc1:
+                    t_side = st.selectbox("Action", ["BUY", "SELL"])
+                    t_type = st.selectbox("Type", ["limit_order", "market_order"])
+                with tc2:
+                    t_price = st.number_input("Price (USDT)", value=float(live_price), format="%.6f")
+                    t_qty = st.number_input("Qty", min_value=0.0, format="%.6f")
+                
+                trade_btn = st.form_submit_button("🚀 PLACE ORDER", use_container_width=True)
+                if trade_btn:
+                    if t_qty <= 0: st.error("Enter valid Qty")
+                    elif t_type == "limit_order" and t_price <= 0: st.error("Enter valid Price")
+                    else:
+                        with st.spinner("Firing Order to CoinDCX..."):
+                            response = place_coindcx_order(clicked_coin, t_side, t_type, t_price, t_qty)
+                            if "error" in response: st.error(f"❌ Failed: {response['error']}")
+                            else: st.success("✅ Success!")
+            st.markdown("</div>", unsafe_allow_html=True)
+            
         st.markdown("<hr style='border: 2px solid #00ffd0; margin-top: 5px; margin-bottom: 20px;'>", unsafe_allow_html=True)
 
 
@@ -582,7 +611,7 @@ if page_selection == "📈 MAIN TERMINAL":
                     st_color = "green" if st_data['Pct'] >= 0 else "red"
                     st_sign = "+" if st_data['Pct'] >= 0 else ""
                     int_link = get_internal_link(st_data['Stock'])
-                    sec_html += f"<a href='{int_link}' target='_self' class='stock-chip' style='color:{st_color};'>{st_data['Stock']} ({st_sign}{st_data['Pct']:.2f}%)</a>"
+                    sec_html += f"<a href='{int_link}' target='_self' class='stock-chip' style='color:{st_color};' title='Click to open chart'>{st_data['Stock']} ({st_sign}{st_data['Pct']:.2f}%)</a>"
                 sec_html += "</div></details>"
             sec_html += "</div>"
             st.markdown(sec_html, unsafe_allow_html=True)
@@ -688,34 +717,7 @@ if page_selection == "📈 MAIN TERMINAL":
             l_html += "</table></div>"
             st.markdown(l_html, unsafe_allow_html=True)
 
-# ==================== MENU 3: REAL TRADE (CoinDCX) ====================
-elif page_selection == "⚡ REAL TRADE (CoinDCX)":
-    st.markdown("<div class='section-title'>⚡ 200+ COINDCX FUTURES MARKETS (LIVE DATA)</div>", unsafe_allow_html=True)
-    with st.spinner("Fetching 200+ Live Futures directly from CoinDCX..."): df_f = fetch_all_crypto()
-    if not df_f.empty:
-        st.dataframe(df_f, use_container_width=True, height=400)
-        st.markdown("<div class='calc-box'><h3>Execute Order</h3>", unsafe_allow_html=True)
-        with st.form("coindcx_order_form"):
-            col1, col2 = st.columns(2)
-            with col1:
-                t_market = st.selectbox("Select Coin", df_f['Asset'].tolist())
-                t_side = st.selectbox("Action", ["BUY", "SELL"])
-            with col2:
-                t_type = st.selectbox("Order Type", ["limit_order", "market_order"])
-                t_price = st.number_input("Price (Required for Limit)", min_value=0.0, format="%.6f")
-                t_qty = st.number_input("Quantity", min_value=0.0, format="%.6f")
-            submit_real_trade = st.form_submit_button("🚀 PLACE REAL ORDER", use_container_width=True)
-            if submit_real_trade:
-                if t_qty <= 0: st.error("Quantity must be greater than 0.")
-                elif t_type == "limit_order" and t_price <= 0: st.error("Limit orders require a valid price.")
-                else:
-                    with st.spinner(f"Placing order on CoinDCX for {t_market}..."):
-                        response = place_coindcx_order(t_market, t_side, t_type, t_price, t_qty)
-                        if "error" in response: st.error(f"❌ Order Failed: {response['error']}")
-                        else: st.success(f"✅ Order Successfully Placed! Server Response: {response}")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-# ==================== MENU 4: RISK CALCULATOR ====================
+# ==================== MENU 2: RISK CALCULATOR ====================
 elif page_selection == "🧮 Futures Risk Calculator":
     st.markdown("<div class='section-title'>🧮 Crypto Futures Risk Calculator</div>", unsafe_allow_html=True)
     st.markdown("<div class='calc-box'>", unsafe_allow_html=True)
@@ -746,7 +748,7 @@ elif page_selection == "🧮 Futures Risk Calculator":
             else: st.warning("Entry and Stop Loss cannot be the same!")
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ==================== MENU 5: BACKTEST ENGINE ====================
+# ==================== MENU 3: BACKTEST ENGINE ====================
 elif page_selection == "📊 Backtest Engine":
     st.markdown("<div class='section-title'>📊 Backtest Engine</div>", unsafe_allow_html=True)
     bt_col1, bt_col2 = st.columns(2)
@@ -784,10 +786,10 @@ elif page_selection == "📊 Backtest Engine":
                     else: st.info(f"No valid setups found for {bt_stock} in the last {bt_period}.")
             except Exception as e: st.error(f"Error fetching data: {e}")
 
-# ==================== MENU 6: SETTINGS ====================
+# ==================== MENU 4: SETTINGS ====================
 elif page_selection == "⚙️ Scanner Settings":
     st.markdown("<div class='section-title'>⚙️ System Status</div>", unsafe_allow_html=True)
-    st.success("✅ Exclusive Crypto Terminal App \n\n ✅ Click-to-Open Deep Analysis Active \n\n ✅ ZERO-LATENCY JS Clock Installed \n\n ✅ Real-time Momentum Decay Calculation")
+    st.success("✅ Exclusive Crypto Terminal App \n\n ✅ Ultimate One-Click Execution Panel Active \n\n ✅ ZERO-LATENCY JS Clock Installed \n\n ✅ Advanced MDF Scanner Active")
 
 if st.session_state.auto_ref:
     time.sleep(refresh_time * 60)
