@@ -79,7 +79,6 @@ css_string = (
     ".sector-content { padding: 8px; border-top: 1px solid #eee; display: flex; flex-wrap: wrap; gap: 5px; background: #fafafa; } "
     ".stock-chip { font-size: 10px; padding: 4px 6px; border-radius: 4px; border: 1px solid #ccc; background: #fff; text-decoration: none !important; font-weight: bold;} "
     ".calc-box { background: white; border: 1px solid #00ffd0; padding: 15px; border-radius: 8px; box-shadow: 0px 2px 8px rgba(0,0,0,0.1); margin-top: 15px;} "
-    
     "/* Momentum Dashboard Custom CSS Fixed For Clipping */"
     ".mdf-table { background-color: rgba(12, 14, 28, 0.95); border: 2px solid rgb(30, 80, 140); color: white; font-family: monospace; width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13px; margin-top: 10px; }"
     ".mdf-table th, .mdf-table td { border: 1px solid rgb(25, 65, 120); padding: 6px 4px; text-align: center; overflow: hidden; white-space: nowrap; }"
@@ -221,8 +220,7 @@ def get_dynamic_momentum(ticker, interval_binance):
     
     return 50, "NEUTRAL", 2.5, 8.0, 0, 15.0, 100, 10, 50
 
-# 🚨 DYNAMIC TIMEFRAME SCANNER 🚨
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=30, show_spinner=False)
 def run_crypto_advanced_strategy(crypto_list, sentiment="BOTH", interval="15m"):
     signals = []
     def scan_coin(coin):
@@ -235,7 +233,6 @@ def run_crypto_advanced_strategy(crypto_list, sentiment="BOTH", interval="15m"):
             df = pd.DataFrame(res, columns=['Open time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close time', 'Quote asset volume', 'Number of trades', 'Taker buy base asset volume', 'Taker buy quote asset volume', 'Ignore'])
             df[['Open', 'High', 'Low', 'Close', 'Volume']] = df[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
             
-            # Using 10-Period Donchian Breakout
             df['Upper_10'] = df['High'].rolling(10).max().shift(1)
             df['Lower_10'] = df['Low'].rolling(10).min().shift(1)
             df['SL_Long'] = df['Low'].rolling(8).min().shift(1)
@@ -253,7 +250,6 @@ def run_crypto_advanced_strategy(crypto_list, sentiment="BOTH", interval="15m"):
             entry = current_close
             sl = 0.0
             
-            # Match Breakout with MDF Phase
             if current_high >= upper_10 and phase == "BULL":
                 signal = "BUY"
                 sl = df['SL_Long'].iloc[-1]
@@ -413,12 +409,6 @@ with st.sidebar:
     selected_sector = st.selectbox("Select Watchlist to Scan:", list(working_sectors.keys()), index=0)
     current_watchlist = working_sectors[selected_sector]
     
-    # 🚨 NEW SIGNAL TIMEFRAME SELECTOR 🚨
-    st.markdown("#### ⏳ Signal Timeframe")
-    signal_tf_label = st.selectbox("Select Scanner Interval:", ["1m", "3m", "5m", "15m", "30m", "1H", "1D"], index=3)
-    tf_map = {"1m": "1m", "3m": "3m", "5m": "5m", "15m": "15m", "30m": "30m", "1H": "1h", "1D": "1d"}
-    signal_tf = tf_map[signal_tf_label]
-    
     st.divider()
     st.markdown("### ⏱️ AUTO REFRESH")
     auto_refresh_toggle = st.checkbox("Enable Auto-Refresh", value=st.session_state.auto_ref)
@@ -481,9 +471,9 @@ if page_selection == "📈 MAIN TERMINAL":
                 st.query_params.clear()
                 st.rerun()
         with da_c2:
-            tf_options = {"1m": ("1", "1m"), "5m": ("5", "5m"), "15m": ("15", "15m"), "1H": ("60", "1h"), "4H": ("240", "4h"), "1D": ("D", "1d")}
-            selected_chart_tf = st.radio("Chart Timeframe:", list(tf_options.keys()), horizontal=True, index=2, key="tf_select_radio", label_visibility="collapsed")
-            tv_interval, binance_interval = tf_options[selected_chart_tf]
+            tf_options_chart = {"1m": ("1", "1m"), "5m": ("5", "5m"), "15m": ("15", "15m"), "1H": ("60", "1h"), "4H": ("240", "4h"), "1D": ("D", "1d")}
+            selected_chart_tf = st.radio("Chart Timeframe:", list(tf_options_chart.keys()), horizontal=True, index=2, key="tf_select_radio", label_visibility="collapsed")
+            tv_interval, binance_interval = tf_options_chart[selected_chart_tf]
         
         tv_symbol = f"BINANCE:{clicked_coin.replace('-USD', 'USDT')}"
         col_chart, col_dash = st.columns([3, 1])
@@ -552,7 +542,6 @@ if page_selection == "📈 MAIN TERMINAL":
                 """
                 st.markdown(mdf_dashboard, unsafe_allow_html=True)
 
-            # 🚨 DYNAMIC QTY CALCULATION IN TRADE PANEL 🚨
             st.markdown("<div style='background: rgba(12, 14, 28, 0.95); padding: 10px; border-radius: 5px; border: 2px solid #00ffd0; margin-top: 15px;'>", unsafe_allow_html=True)
             st.markdown(f"<div style='color:#00ffd0; font-weight:bold; font-size:13px; text-align:center; margin-bottom:8px;'>⚡ INSTANT ORDER: {clicked_coin}</div>", unsafe_allow_html=True)
             
@@ -566,10 +555,8 @@ if page_selection == "📈 MAIN TERMINAL":
                     t_type = st.selectbox("Type", ["limit_order", "market_order"])
                 with tc2:
                     t_price = st.number_input("Entry Price (USDT)", value=float(live_price), format="%.6f")
-                    # NEW: Input Amount in USDT to automatically calculate Qty
-                    t_amt_usdt = st.number_input("Capital (USDT)", value=100.0, min_value=1.0, step=10.0)
-                    t_qty = t_amt_usdt / t_price if t_price > 0 else 0.0
-                    st.caption(f"Estimated Qty: **{t_qty:.6f}** {clicked_coin.split('-')[0]}")
+                    # 🚨 EXPLICIT QUANTITY INPUT RESTORED 🚨
+                    t_qty = st.number_input("Quantity (Coins)", value=1.0, min_value=0.000001, format="%.6f")
                 with tc3:
                     t_sl = st.number_input("Stop Loss (USDT)", value=float(live_price * 0.99), format="%.6f")
                     t_tp = st.number_input("Take Profit (USDT)", value=float(live_price * 1.03), format="%.6f")
@@ -589,9 +576,15 @@ if page_selection == "📈 MAIN TERMINAL":
 
 
     # ------------------ REGULAR DASHBOARD ------------------
-    # 🚨 UPDATED: SCANNER NOW USES SELECTED TIMEFRAME 🚨
-    with st.spinner(f"Scanning {signal_tf_label} Trend Breakouts (MDF + Donchian)..."): 
-        live_signals = run_crypto_advanced_strategy(current_watchlist, user_sentiment, signal_tf)
+    # 🚨 TIMEFRAME SELECTOR FOR SIGNAL DASHBOARD MOVED TO MAIN UI 🚨
+    st.markdown("<div style='background: rgba(12, 14, 28, 0.95); padding: 10px; border-radius: 5px; border: 1px solid #b0c4de; margin-bottom: 15px;'>", unsafe_allow_html=True)
+    sig_tf_options = {"1m": "1m", "3m": "3m", "5m": "5m", "15m": "15m", "30m": "30m", "1H": "1h", "1D": "1d"}
+    selected_sig_tf = st.radio("⏳ **SELECT SIGNAL & SCANNER TIMEFRAME:**", list(sig_tf_options.keys()), horizontal=True, index=3, key="sig_tf_main_radio")
+    sig_interval = sig_tf_options[selected_sig_tf]
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    with st.spinner(f"Scanning {selected_sig_tf} Trend Breakouts (MDF + Donchian)..."): 
+        live_signals = run_crypto_advanced_strategy(current_watchlist, user_sentiment, sig_interval)
     process_auto_trades(live_signals)
 
     with st.spinner("Fetching Market Movers for 200+ Coins..."):
@@ -677,7 +670,7 @@ if page_selection == "📈 MAIN TERMINAL":
         adv_dec_html = f"<div class='adv-dec-container'><div class='adv-dec-bar'><div class='bar-green' style='width: {adv_pct}%;'></div><div class='bar-red' style='width: {100-adv_pct}%;'></div></div><div style='display:flex; justify-content:space-between; font-size:12px; font-weight:bold;'><span style='color:green;'>Advances: {adv}</span><span style='color:red;'>Declines: {dec}</span></div></div>"
         st.markdown(adv_dec_html, unsafe_allow_html=True)
 
-        st.markdown(f"<div class='section-title'>🎯 LIVE SIGNALS: {selected_sector} ({signal_tf_label.upper()} MDF + DONCHIAN)</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='section-title'>🎯 LIVE SIGNALS: {selected_sector} ({selected_sig_tf} MDF + DONCHIAN)</div>", unsafe_allow_html=True)
         if len(live_signals) > 0:
             sig_html = "<div class='table-container'><table class='v38-table'><tr><th>Asset 🔗</th><th>Entry</th><th>LTP</th><th>Signal</th><th>SL</th><th>Target (1:3)</th><th>Time</th></tr>"
             for sig in live_signals:
@@ -687,7 +680,7 @@ if page_selection == "📈 MAIN TERMINAL":
                 sig_html += f"<tr><td style='font-weight:bold;'><a href='{int_link}' target='_self' title='Open Deep Analysis'>🔸 {sig['Stock']}</a> <a href='{ext_link}' target='_blank' style='font-size:10px;' title='Open TradingView'>🌐</a></td><td>${fmt_price(sig['Entry'])}</td><td>${fmt_price(sig['LTP'])}</td><td style='color:white; background:{sig_clr}; font-weight:bold;'>{sig['Signal']}</td><td>${fmt_price(sig['SL'])}</td><td style='font-weight:bold; color:#856404;'>${fmt_price(sig['Target'])}</td><td>{sig['Time']}</td></tr>"
             sig_html += "</table></div>"
             st.markdown(sig_html, unsafe_allow_html=True)
-        else: st.info(f"⏳ No trend breakouts matching MDF Phase on {signal_tf_label} chart right now.")
+        else: st.info(f"⏳ No trend breakouts matching MDF Phase on {selected_sig_tf} chart right now.")
 
         st.markdown("<div class='section-title'>⏳ ACTIVE TRADES</div>", unsafe_allow_html=True)
         if len(st.session_state.active_trades) > 0:
@@ -813,7 +806,7 @@ elif page_selection == "📊 Backtest Engine":
 # ==================== MENU 4: SETTINGS ====================
 elif page_selection == "⚙️ Scanner Settings":
     st.markdown("<div class='section-title'>⚙️ System Status</div>", unsafe_allow_html=True)
-    st.success("✅ Exclusive Crypto Terminal App \n\n ✅ Signal Timeframe Selector Activated \n\n ✅ Smart Amount (USDT) to Quantity Converter Active")
+    st.success("✅ Exclusive Crypto Terminal App \n\n ✅ Signal Timeframe Selector Activated \n\n ✅ Smart Quantity Entry Activated")
 
 if st.session_state.auto_ref:
     time.sleep(refresh_time * 60)
