@@ -60,7 +60,6 @@ css_string = (
     "<style>"
     "#MainMenu {visibility: hidden;} footer {visibility: hidden;} .stApp { background-color: #f0f4f8; font-family: 'Segoe UI', sans-serif; } "
     ".block-container { padding-top: 3rem !important; padding-bottom: 1rem !important; padding-left: 1rem !important; padding-right: 1rem !important; } "
-    ".top-nav { background-color: #002b36; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #00ffd0; border-radius: 8px; margin-bottom: 10px; box-shadow: 0px 4px 10px rgba(0,0,0,0.2); } "
     ".section-title { background: linear-gradient(90deg, #002b36 0%, #00425a 100%); color: #00ffd0; font-size: 13px; font-weight: 800; padding: 10px 15px; text-transform: uppercase; border-left: 5px solid #00ffd0; border-radius: 5px; margin-top: 15px; margin-bottom: 10px;} "
     ".table-container { overflow-x: auto; width: 100%; border-radius: 5px; } "
     ".v38-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 11px; color: black; background: white; border: 1px solid #b0c4de; margin-bottom: 10px; white-space: nowrap; } "
@@ -79,7 +78,6 @@ css_string = (
     ".sector-content { padding: 8px; border-top: 1px solid #eee; display: flex; flex-wrap: wrap; gap: 5px; background: #fafafa; } "
     ".stock-chip { font-size: 10px; padding: 4px 6px; border-radius: 4px; border: 1px solid #ccc; background: #fff; text-decoration: none !important; font-weight: bold;} "
     ".calc-box { background: white; border: 1px solid #00ffd0; padding: 15px; border-radius: 8px; box-shadow: 0px 2px 8px rgba(0,0,0,0.1); margin-top: 15px;} "
-    
     "/* Momentum Dashboard Custom CSS */"
     ".mdf-table { background-color: rgba(12, 14, 28, 0.95); border: 2px solid rgb(30, 80, 140); color: white; font-family: monospace; width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }"
     ".mdf-table th, .mdf-table td { border: 1px solid rgb(25, 65, 120); padding: 6px 8px; text-align: center; }"
@@ -207,7 +205,6 @@ def calculate_mdf_physics(df):
 
     return energy_pct, phase, e0, round(half_life, 1), bars_since, round(decay_eta, 1), impulses, exhaustions, divergences
 
-# 🚨 REMOVED CACHE HERE SO TIMEFRAME CHANGES INSTANTLY UPDATE 🚨
 def get_dynamic_momentum(ticker, interval_binance):
     try:
         symbol = ticker.replace('-USD', 'USDT')
@@ -220,7 +217,6 @@ def get_dynamic_momentum(ticker, interval_binance):
     except: pass
     return 0, "NEUTRAL", 0.0, 0, 0, 0, 0, 0, 0
 
-# 🚨 CHANGED SCANNER TO 15m FOR MORE FREQUENT SIGNALS 🚨
 @st.cache_data(ttl=60, show_spinner=False)
 def run_crypto_advanced_strategy(crypto_list, sentiment="BOTH"):
     signals = []
@@ -234,7 +230,6 @@ def run_crypto_advanced_strategy(crypto_list, sentiment="BOTH"):
             df = pd.DataFrame(res, columns=['Open time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close time', 'Quote asset volume', 'Number of trades', 'Taker buy base asset volume', 'Taker buy quote asset volume', 'Ignore'])
             df[['Open', 'High', 'Low', 'Close', 'Volume']] = df[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
             
-            # Donchian Channels Logic (20 periods on 15m chart)
             df['Upper_20'] = df['High'].rolling(20).max().shift(1)
             df['Lower_20'] = df['Low'].rolling(20).min().shift(1)
             df['SL_Long'] = df['Low'].rolling(10).min().shift(1)
@@ -252,7 +247,6 @@ def run_crypto_advanced_strategy(crypto_list, sentiment="BOTH"):
             entry = current_close
             sl = 0.0
             
-            # Simplified Logic for more triggers: Breakout + Correct Phase
             if current_high >= upper_20 and phase == "BULL":
                 signal = "BUY"
                 sl = df['SL_Long'].iloc[-1]
@@ -429,18 +423,30 @@ with st.sidebar:
         time.sleep(1)
         st.rerun()
 
-# --- Top Nav ---
-ist_timezone = pytz.timezone('Asia/Kolkata')
-curr_time = datetime.datetime.now(ist_timezone)
-st.markdown(f"""
-<div class='top-nav'>
-    <div style='color:#00ffd0; font-weight:900; font-size:22px; letter-spacing:2px; text-transform:uppercase;'>📊 HARIDAS CRYPTO TERMINAL</div>
-    <div style='font-size: 14px; color: #ffeb3b; font-weight: bold; display: flex; align-items: center;'>
-        <span style='background: #17a2b8; color: white; padding: 3px 10px; border-radius: 4px; margin-right: 15px;'>LIVE 24/7 (CRYPTO)</span>
-        🕒 {curr_time.strftime('%H:%M:%S')} (IST)
+# 🚨 THE ZERO-LATENCY JS CLOCK TOP NAV 🚨
+top_nav_html = """
+<style>body { margin: 0; padding: 0; overflow: hidden; background: transparent; }</style>
+<div style="font-family: 'Segoe UI', sans-serif; background-color: #002b36; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #00ffd0; border-radius: 8px; box-shadow: 0px 4px 10px rgba(0,0,0,0.2);">
+    <div style="color:#00ffd0; font-weight:900; font-size:22px; letter-spacing:2px; text-transform:uppercase;">📊 HARIDAS CRYPTO TERMINAL</div>
+    <div style="font-size: 14px; color: #ffeb3b; font-weight: bold; display: flex; align-items: center;">
+        <span style="background: #17a2b8; color: white; padding: 3px 10px; border-radius: 4px; margin-right: 15px;">LIVE 24/7 (CRYPTO)</span>
+        🕒 <span id="live_clock" style="margin-left: 5px;"></span> &nbsp;(IST)
     </div>
 </div>
-""", unsafe_allow_html=True)
+<script>
+    function updateClock() {
+        var now = new Date();
+        var utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+        var ist = new Date(utc + (3600000 * 5.5));
+        var h = ist.getHours(); var m = ist.getMinutes(); var s = ist.getSeconds();
+        h = (h < 10 ? "0" : "") + h; m = (m < 10 ? "0" : "") + m; s = (s < 10 ? "0" : "") + s;
+        document.getElementById("live_clock").innerText = h + ":" + m + ":" + s;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+</script>
+"""
+components.html(top_nav_html, height=75)
 
 col_ref1, col_ref2 = st.columns([8, 2])
 with col_ref2:
@@ -781,7 +787,7 @@ elif page_selection == "📊 Backtest Engine":
 # ==================== MENU 6: SETTINGS ====================
 elif page_selection == "⚙️ Scanner Settings":
     st.markdown("<div class='section-title'>⚙️ System Status</div>", unsafe_allow_html=True)
-    st.success("✅ Exclusive Crypto Terminal App \n\n ✅ Click-to-Open Deep Analysis Active \n\n ✅ Real-time Momentum Decay Calculation \n\n ✅ Advanced MDF + Donchian Scanner Engine Active")
+    st.success("✅ Exclusive Crypto Terminal App \n\n ✅ Click-to-Open Deep Analysis Active \n\n ✅ ZERO-LATENCY JS Clock Installed \n\n ✅ Real-time Momentum Decay Calculation")
 
 if st.session_state.auto_ref:
     time.sleep(refresh_time * 60)
