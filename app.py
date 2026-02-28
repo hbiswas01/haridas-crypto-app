@@ -48,7 +48,6 @@ def fmt_price(val):
         else: return f"{val:,.2f}"
     except: return "0.00"
 
-# 🚨 NEW LINK GENERATORS FOR INTERNAL CLICKS 🚨
 def get_tv_link(ticker):
     sym = "BINANCE:" + ticker.replace("-USD", "USDT")
     return f"https://in.tradingview.com/chart/?symbol={sym}"
@@ -208,7 +207,7 @@ def calculate_mdf_physics(df):
 
     return energy_pct, phase, e0, round(half_life, 1), bars_since, round(decay_eta, 1), impulses, exhaustions, divergences
 
-@st.cache_data(ttl=30, show_spinner=False)
+# 🚨 REMOVED CACHE HERE SO TIMEFRAME CHANGES INSTANTLY UPDATE 🚨
 def get_dynamic_momentum(ticker, interval_binance):
     try:
         symbol = ticker.replace('-USD', 'USDT')
@@ -221,20 +220,21 @@ def get_dynamic_momentum(ticker, interval_binance):
     except: pass
     return 0, "NEUTRAL", 0.0, 0, 0, 0, 0, 0, 0
 
+# 🚨 CHANGED SCANNER TO 15m FOR MORE FREQUENT SIGNALS 🚨
 @st.cache_data(ttl=60, show_spinner=False)
 def run_crypto_advanced_strategy(crypto_list, sentiment="BOTH"):
     signals = []
     def scan_coin(coin):
         try:
             symbol = coin.replace('-USD', 'USDT')
-            url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1h&limit=60"
+            url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=15m&limit=100"
             res = requests.get(url, timeout=3).json()
-            if len(res) < 56: return None
+            if len(res) < 50: return None
             
             df = pd.DataFrame(res, columns=['Open time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close time', 'Quote asset volume', 'Number of trades', 'Taker buy base asset volume', 'Taker buy quote asset volume', 'Ignore'])
             df[['Open', 'High', 'Low', 'Close', 'Volume']] = df[['Open', 'High', 'Low', 'Close', 'Volume']].astype(float)
             
-            # Donchian Channels Logic
+            # Donchian Channels Logic (20 periods on 15m chart)
             df['Upper_20'] = df['High'].rolling(20).max().shift(1)
             df['Lower_20'] = df['Low'].rolling(20).min().shift(1)
             df['SL_Long'] = df['Low'].rolling(10).min().shift(1)
@@ -252,10 +252,11 @@ def run_crypto_advanced_strategy(crypto_list, sentiment="BOTH"):
             entry = current_close
             sl = 0.0
             
-            if current_high >= upper_20 and phase == "BULL" and energy_pct > 30:
+            # Simplified Logic for more triggers: Breakout + Correct Phase
+            if current_high >= upper_20 and phase == "BULL":
                 signal = "BUY"
                 sl = df['SL_Long'].iloc[-1]
-            elif current_low <= lower_20 and phase == "BEAR" and energy_pct > 30:
+            elif current_low <= lower_20 and phase == "BEAR":
                 signal = "SHORT"
                 sl = df['SL_Short'].iloc[-1]
                 
@@ -462,7 +463,7 @@ if page_selection == "📈 MAIN TERMINAL":
                 st.rerun()
         with da_c2:
             tf_options = {"1m": ("1", "1m"), "5m": ("5", "5m"), "15m": ("15", "15m"), "1H": ("60", "1h"), "4H": ("240", "4h"), "1D": ("D", "1d")}
-            selected_tf_label = st.radio("Timeframe:", list(tf_options.keys()), horizontal=True, index=3, label_visibility="collapsed")
+            selected_tf_label = st.radio("Timeframe:", list(tf_options.keys()), horizontal=True, index=2, key="tf_select_radio", label_visibility="collapsed")
             tv_interval, binance_interval = tf_options[selected_tf_label]
         
         tv_symbol = f"BINANCE:{clicked_coin.replace('-USD', 'USDT')}"
@@ -530,7 +531,7 @@ if page_selection == "📈 MAIN TERMINAL":
 
 
     # ------------------ REGULAR DASHBOARD ------------------
-    with st.spinner(f"Scanning 1H Trend Breakouts (MDF + Donchian)..."): 
+    with st.spinner(f"Scanning 15m Trend Breakouts (MDF + Donchian)..."): 
         live_signals = run_crypto_advanced_strategy(current_watchlist, user_sentiment)
     process_auto_trades(live_signals)
 
@@ -617,7 +618,7 @@ if page_selection == "📈 MAIN TERMINAL":
         adv_dec_html = f"<div class='adv-dec-container'><div class='adv-dec-bar'><div class='bar-green' style='width: {adv_pct}%;'></div><div class='bar-red' style='width: {100-adv_pct}%;'></div></div><div style='display:flex; justify-content:space-between; font-size:12px; font-weight:bold;'><span style='color:green;'>Advances: {adv}</span><span style='color:red;'>Declines: {dec}</span></div></div>"
         st.markdown(adv_dec_html, unsafe_allow_html=True)
 
-        st.markdown(f"<div class='section-title'>🎯 LIVE SIGNALS: {selected_sector} (MDF + DONCHIAN)</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='section-title'>🎯 LIVE SIGNALS: {selected_sector} (15M MDF + DONCHIAN)</div>", unsafe_allow_html=True)
         if len(live_signals) > 0:
             sig_html = "<div class='table-container'><table class='v38-table'><tr><th>Asset 🔗</th><th>Entry</th><th>LTP</th><th>Signal</th><th>SL</th><th>Target (1:3)</th><th>Time</th></tr>"
             for sig in live_signals:
